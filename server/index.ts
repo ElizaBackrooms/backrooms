@@ -10,7 +10,17 @@ config()
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
 const app = express()
-app.use(cors())
+// Allow CORS from your frontend domains
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://elizabackrooms.xyz',
+    'https://www.elizabackrooms.xyz',
+    'http://elizabackrooms.xyz',
+    'http://www.elizabackrooms.xyz'
+  ],
+  credentials: true
+}))
 app.use(express.json())
 
 // Serve static frontend in production

@@ -2,6 +2,9 @@
 // INFINITE BACKROOMS - LIVE AI CONVERSATION VIEWER
 // ═══════════════════════════════════════════════════════════════
 
+// Backend API URL (Render)
+const API_URL = 'https://infinite-backrooms.onrender.com'
+
 interface Message {
   id: string
   timestamp: number
@@ -44,7 +47,7 @@ class BackroomsViewer {
 
   private async loadInitialState() {
     try {
-      const response = await fetch('/api/state')
+      const response = await fetch(`${API_URL}/api/state`)
       const state = await response.json()
       
       this.conversation.innerHTML = ''
@@ -71,7 +74,7 @@ class BackroomsViewer {
   }
 
   private connectToStream() {
-    this.eventSource = new EventSource('/api/stream')
+    this.eventSource = new EventSource(`${API_URL}/api/stream`)
     
     this.eventSource.onopen = () => {
       console.log('Connected to backrooms stream')
@@ -175,7 +178,7 @@ class BackroomsViewer {
     this.startBtn.addEventListener('click', async () => {
       this.startBtn.disabled = true
       try {
-        await fetch('/api/start', { method: 'POST' })
+        await fetch(`${API_URL}/api/start`, { method: 'POST' })
       } catch (error) {
         console.error('Failed to start:', error)
         this.startBtn.disabled = false
@@ -185,7 +188,7 @@ class BackroomsViewer {
     this.stopBtn.addEventListener('click', async () => {
       this.stopBtn.disabled = true
       try {
-        await fetch('/api/stop', { method: 'POST' })
+        await fetch(`${API_URL}/api/stop`, { method: 'POST' })
       } catch (error) {
         console.error('Failed to stop:', error)
         this.stopBtn.disabled = false
@@ -195,7 +198,7 @@ class BackroomsViewer {
     this.resetBtn.addEventListener('click', async () => {
       if (confirm('Reset the conversation? This will clear all messages.')) {
         try {
-          await fetch('/api/reset', { method: 'POST' })
+          await fetch(`${API_URL}/api/reset`, { method: 'POST' })
         } catch (error) {
           console.error('Failed to reset:', error)
         }
