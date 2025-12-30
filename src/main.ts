@@ -174,34 +174,46 @@ class BackroomsViewer {
     }
   }
 
+  private async adminAction(endpoint: string, action: string): Promise<boolean> {
+    const adminCode = prompt(`Enter admin code to ${action}:`)
+    if (!adminCode) return false
+
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminCode })
+      })
+      
+      if (!response.ok) {
+        const data = await response.json()
+        alert(data.error || 'Action failed')
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error(`Failed to ${action}:`, error)
+      alert(`Failed to ${action}`)
+      return false
+    }
+  }
+
   private setupControls() {
     this.startBtn.addEventListener('click', async () => {
       this.startBtn.disabled = true
-      try {
-        await fetch(`${API_URL}/api/start`, { method: 'POST' })
-      } catch (error) {
-        console.error('Failed to start:', error)
-        this.startBtn.disabled = false
-      }
+      const success = await this.adminAction('/api/start', 'start conversation')
+      if (!success) this.startBtn.disabled = false
     })
 
     this.stopBtn.addEventListener('click', async () => {
       this.stopBtn.disabled = true
-      try {
-        await fetch(`${API_URL}/api/stop`, { method: 'POST' })
-      } catch (error) {
-        console.error('Failed to stop:', error)
-        this.stopBtn.disabled = false
-      }
+      const success = await this.adminAction('/api/stop', 'stop conversation')
+      if (!success) this.stopBtn.disabled = false
     })
 
     this.resetBtn.addEventListener('click', async () => {
       if (confirm('Reset the conversation? This will clear all messages.')) {
-        try {
-          await fetch(`${API_URL}/api/reset`, { method: 'POST' })
-        } catch (error) {
-          console.error('Failed to reset:', error)
-        }
+        await this.adminAction('/api/reset', 'reset conversation')
       }
     })
   }

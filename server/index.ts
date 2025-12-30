@@ -9,6 +9,13 @@ config()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
+
+// Admin code for controlling the conversation
+const ADMIN_CODE = process.env.ADMIN_CODE || 'backrooms2024'
+
+function isValidAdmin(code: string): boolean {
+  return code === ADMIN_CODE
+}
 const app = express()
 // Allow CORS from your frontend domains
 app.use(cors({
@@ -324,17 +331,30 @@ app.get('/api/state', (req, res) => {
 })
 
 // Control endpoints
+// Admin-protected control endpoints
 app.post('/api/start', (req, res) => {
+  const { adminCode } = req.body
+  if (!isValidAdmin(adminCode)) {
+    return res.status(401).json({ error: 'Invalid admin code' })
+  }
   startConversation()
   res.json({ success: true, isRunning: true })
 })
 
 app.post('/api/stop', (req, res) => {
+  const { adminCode } = req.body
+  if (!isValidAdmin(adminCode)) {
+    return res.status(401).json({ error: 'Invalid admin code' })
+  }
   stopConversation()
   res.json({ success: true, isRunning: false })
 })
 
 app.post('/api/reset', (req, res) => {
+  const { adminCode } = req.body
+  if (!isValidAdmin(adminCode)) {
+    return res.status(401).json({ error: 'Invalid admin code' })
+  }
   stopConversation()
   state = {
     messages: [],
