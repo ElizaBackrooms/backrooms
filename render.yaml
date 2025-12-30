@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: infinite-backrooms
+    env: node
+    plan: starter  # $7/month for always-on, or use 'free' (sleeps after 15min)
+    buildCommand: npm install && npm run build:all
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false  # You'll add this manually in Render dashboard
+
