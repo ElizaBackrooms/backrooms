@@ -10,11 +10,11 @@ config()
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
 
-// Admin code for controlling the conversation
-const ADMIN_CODE = process.env.ADMIN_CODE || 'backrooms2024'
-
+// Admin code for controlling the conversation (set via environment variable only)
 function isValidAdmin(code: string): boolean {
-  return code === ADMIN_CODE
+  const adminCode = process.env.ADMIN_CODE
+  if (!adminCode) return false // No admin code set = no access
+  return code === adminCode
 }
 const app = express()
 // Allow CORS from your frontend domains
