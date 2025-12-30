@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// INFINITE BACKROOMS - LIVE AI CONVERSATION VIEWER
+// ELIZA BACKROOMS - LIVE AI CONVERSATION VIEWER
 // ═══════════════════════════════════════════════════════════════
 
 // Backend API URL (Render)
