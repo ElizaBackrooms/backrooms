@@ -131,7 +131,11 @@ async function initializeAgents() {
       plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
       settings: {
         OPENAI_API_KEY: openaiKey,
-        PGLITE_PATH: join(DATA_PATH, 'alpha-db')
+        PGLITE_PATH: join(DATA_PATH, 'alpha-db'),
+        // Image generation settings
+        IMAGE_GEN_PROVIDER: 'openai',
+        IMAGE_MODEL: 'dall-e-3',
+        IMAGE_SIZE: '1024x1024'
       }
     })
     
@@ -148,7 +152,11 @@ async function initializeAgents() {
       plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
       settings: {
         OPENAI_API_KEY: openaiKey,
-        PGLITE_PATH: join(DATA_PATH, 'omega-db')
+        PGLITE_PATH: join(DATA_PATH, 'omega-db'),
+        // Image generation settings
+        IMAGE_GEN_PROVIDER: 'openai',
+        IMAGE_MODEL: 'dall-e-3',
+        IMAGE_SIZE: '1024x1024'
       }
     })
     
