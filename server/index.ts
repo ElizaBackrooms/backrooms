@@ -63,11 +63,16 @@ const CHARACTERS_PATH = isProduction
   ? join(__dirname, '../../characters')
   : join(__dirname, '../characters')
 
-// Room/World IDs for conversations
+// Room/World IDs for conversations - each agent gets its own room to avoid conflicts
 const BACKROOMS_WORLD_ID = stringToUuid('backrooms-world')
-const BACKROOMS_ROOM_ID = stringToUuid('backrooms-main-room')
+const ALPHA_BACKROOMS_ROOM = stringToUuid('alpha-backrooms-room')
+const OMEGA_BACKROOMS_ROOM = stringToUuid('omega-backrooms-room')
 const USER_CHAT_ROOM_ALPHA = stringToUuid('user-chat-alpha')
 const USER_CHAT_ROOM_OMEGA = stringToUuid('user-chat-omega')
+
+// Track if rooms have been set up for each agent
+let alphaRoomReady = false
+let omegaRoomReady = false
 
 // Load character from JSON file and convert to ElizaOS format
 function loadCharacter(name: string): Character {
@@ -407,7 +412,8 @@ async function generateElizaResponse(
   runtime: AgentRuntime,
   senderName: string,
   messageText: string,
-  roomId: UUID
+  roomId: UUID,
+  isAlpha: boolean
 ): Promise<string> {
   if (!runtime.messageService) {
     console.error('MessageService not initialized')
@@ -416,18 +422,29 @@ async function generateElizaResponse(
 
   try {
     const senderId = stringToUuid(senderName)
+    const roomReady = isAlpha ? alphaRoomReady : omegaRoomReady
     
-    // Ensure connection exists
-    await runtime.ensureConnection({
-      entityId: senderId,
-      roomId,
-      worldId: BACKROOMS_WORLD_ID,
-      name: senderName,
-      source: 'backrooms',
-      channelId: 'backrooms-channel',
-      messageServerId: stringToUuid('backrooms-server'),
-      type: ChannelType.DM
-    })
+    // Only try to set up room if not already done
+    if (!roomReady) {
+      try {
+        await runtime.ensureConnection({
+          entityId: senderId,
+          roomId,
+          worldId: BACKROOMS_WORLD_ID,
+          name: senderName,
+          source: 'backrooms',
+          channelId: `backrooms-channel-${isAlpha ? 'alpha' : 'omega'}`,
+          messageServerId: stringToUuid(`backrooms-server-${isAlpha ? 'alpha' : 'omega'}`),
+          type: ChannelType.DM
+        })
+        if (isAlpha) alphaRoomReady = true
+        else omegaRoomReady = true
+        console.log(`✅ Room ready for ${isAlpha ? 'ALPHA' : 'OMEGA'}`)
+      } catch (roomError) {
+        console.warn(`⚠️ Room setup warning for ${isAlpha ? 'ALPHA' : 'OMEGA'}:`, roomError)
+        // Continue anyway - message processing might still work
+      }
+    }
 
     // Create the message
     const message: Memory = createMessageMemory({
@@ -471,6 +488,7 @@ async function runConversationTurn() {
   const currentRuntime = isAlphaTurn ? alphaRuntime : omegaRuntime
   const senderName = isAlphaTurn ? 'CLAUDE_OMEGA' : 'CLAUDE_ALPHA'
   const entityName = isAlphaTurn ? 'CLAUDE_ALPHA' : 'CLAUDE_OMEGA'
+  const roomId = isAlphaTurn ? ALPHA_BACKROOMS_ROOM : OMEGA_BACKROOMS_ROOM
   
   // Get last message to respond to
   const lastMessage = state.messages.length > 0 
@@ -484,7 +502,8 @@ async function runConversationTurn() {
       currentRuntime,
       senderName,
       lastMessage,
-      BACKROOMS_ROOM_ID
+      roomId,
+      isAlphaTurn
     )
     
     // Check for image request
@@ -584,14 +603,15 @@ async function chatWithAgent(
   userMessage: string,
   userId: string
 ): Promise<string> {
-  const runtime = agent === 'alpha' ? alphaRuntime : omegaRuntime
-  const roomId = agent === 'alpha' ? USER_CHAT_ROOM_ALPHA : USER_CHAT_ROOM_OMEGA
+  const isAlpha = agent === 'alpha'
+  const runtime = isAlpha ? alphaRuntime : omegaRuntime
+  const roomId = isAlpha ? USER_CHAT_ROOM_ALPHA : USER_CHAT_ROOM_OMEGA
   
   if (!runtime) {
     return '> ERROR: Agent not initialized'
   }
 
-  return generateElizaResponse(runtime, `User-${userId}`, userMessage, roomId)
+  return generateElizaResponse(runtime, `User-${userId}`, userMessage, roomId, isAlpha)
 }
 
 // ═══════════════════════════════════════════════════════════════
