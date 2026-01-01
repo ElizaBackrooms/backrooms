@@ -218,10 +218,10 @@ function saveState() {
 let state = loadState()
 
 // ═══════════════════════════════════════════════════════════════
-// IMAGE GENERATION (DALL-E) - Alternating every 2.6 minutes
+// IMAGE GENERATION (DALL-E) - Alternating every 10 minutes
 // ═══════════════════════════════════════════════════════════════
 
-const IMAGE_INTERVAL = 2.6 * 60 * 1000  // 2.6 minutes
+const IMAGE_INTERVAL = 10 * 60 * 1000  // 10 minutes
 let nextImageTime = Date.now() + IMAGE_INTERVAL
 let nextImageIsAlpha = true  // Alpha goes first
 
@@ -564,7 +564,7 @@ async function runConversationTurn() {
         imageUrl = generatedUrl
         nextImageIsAlpha = !nextImageIsAlpha
         nextImageTime = now + IMAGE_INTERVAL
-        console.log(`📸 Scheduled image by ${isAlphaTurn ? 'ALPHA' : 'OMEGA'} - next: ${nextImageIsAlpha ? 'ALPHA' : 'OMEGA'} in 2.6 min`)
+        console.log(`📸 Scheduled image by ${isAlphaTurn ? 'ALPHA' : 'OMEGA'} - next: ${nextImageIsAlpha ? 'ALPHA' : 'OMEGA'} in 10 min`)
       }
     }
     
