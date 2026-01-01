@@ -465,13 +465,23 @@ async function generateElizaResponse(
     })
 
     // Process through Eliza
+    console.log(`📤 Sending message to ${isAlpha ? 'ALPHA' : 'OMEGA'}...`)
     const result = await runtime.messageService.handleMessage(runtime, message)
     
-    if (result.responseContent?.text) {
+    console.log(`📥 Got result from ${isAlpha ? 'ALPHA' : 'OMEGA'}:`, {
+      hasResponse: !!result,
+      hasResponseContent: !!result?.responseContent,
+      hasText: !!result?.responseContent?.text,
+      textLength: result?.responseContent?.text?.length || 0
+    })
+    
+    if (result?.responseContent?.text) {
       return result.responseContent.text
+    } else {
+      console.error(`❌ No text in response from ${isAlpha ? 'ALPHA' : 'OMEGA'}:`, JSON.stringify(result, null, 2).slice(0, 500))
     }
   } catch (e) {
-    console.error('Eliza generation error:', e)
+    console.error(`❌ Eliza generation error (${isAlpha ? 'ALPHA' : 'OMEGA'}):`, e)
   }
 
   return `*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream...`
