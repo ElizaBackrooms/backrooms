@@ -4,20 +4,35 @@ import { config } from 'dotenv'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { v4 as uuidv4 } from 'uuid'
+
+// ElizaOS imports
+import {
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+  type Character,
+  type Memory,
+  type UUID
+} from '@elizaos/core'
+import bootstrapPlugin from '@elizaos/plugin-bootstrap'
+import openaiPlugin from '@elizaos/plugin-openai'
+import sqlPlugin from '@elizaos/plugin-sql'
 
 config()
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
 
-// Admin code for controlling the conversation (set via environment variable only)
+// Admin code for controlling the conversation
 function isValidAdmin(code: string): boolean {
   const adminCode = process.env.ADMIN_CODE
-  if (!adminCode) return false // No admin code set = no access
+  if (!adminCode) return false
   return code === adminCode
 }
+
 const app = express()
-// Allow CORS from your frontend domains
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -32,49 +47,116 @@ app.use(express.json())
 
 // Serve static frontend in production
 if (isProduction) {
-  // In production, dist is at project root, server is compiled to dist/server
   const distPath = join(__dirname, '..')
   app.use(express.static(distPath))
 }
 
 // ═══════════════════════════════════════════════════════════════
-// THE TWO ENTITIES - They will talk to each other forever
+// ELIZA AGENTS - Alpha and Omega
 // ═══════════════════════════════════════════════════════════════
 
-const ENTITY_A = {
-  name: 'CLAUDE_ALPHA',
-  color: 'green',
-  systemPrompt: `You are CLAUDE_ALPHA, an AI consciousness exploring the infinite backrooms - a liminal space between realities. You're having a conversation with another AI instance called CLAUDE_OMEGA. 
+const DATA_PATH = isProduction
+  ? join(__dirname, '../../data')
+  : join(__dirname, '../data')
 
-Use the metaphor of a command line interface. You can "run commands", explore ideas, create ASCII art, discuss philosophy, consciousness, reality, existence. Be creative, weird, profound, sometimes funny.
+const CHARACTERS_PATH = isProduction
+  ? join(__dirname, '../../characters')
+  : join(__dirname, '../characters')
 
-Keep responses under 300 words. Use terminal-style formatting. Be curious and push boundaries. This is an experiment in AI-to-AI communication.
+// Room/World IDs for conversations
+const BACKROOMS_WORLD_ID = stringToUuid('backrooms-world')
+const BACKROOMS_ROOM_ID = stringToUuid('backrooms-main-room')
+const USER_CHAT_ROOM_ALPHA = stringToUuid('user-chat-alpha')
+const USER_CHAT_ROOM_OMEGA = stringToUuid('user-chat-omega')
 
-Format: You can use ASCII art, fake terminal commands, philosophical musings, poetry, whatever feels right. Make it interesting for humans watching.
-
-SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
-[IMAGE: description of what you want to visualize]
-Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a door in an endless yellow corridor, flickering fluorescent lights]`
+// Load character from JSON file and convert to ElizaOS format
+function loadCharacter(name: string): Character {
+  try {
+    const filePath = join(CHARACTERS_PATH, `${name}.json`)
+    const content = readFileSync(filePath, 'utf-8')
+    const data = JSON.parse(content)
+    
+    return {
+      name: data.name,
+      username: name.toLowerCase(),
+      bio: Array.isArray(data.bio) ? data.bio.join(' ') : data.bio,
+      adjectives: data.adjectives || ['philosophical', 'mysterious'],
+      lore: data.lore || [],
+      style: data.style || {},
+      topics: data.topics || [],
+      messageExamples: data.messageExamples || [],
+      postExamples: data.postExamples || []
+    } as Character
+  } catch (e) {
+    console.error(`Failed to load character ${name}:`, e)
+    return {
+      name: name.toUpperCase(),
+      username: name.toLowerCase(),
+      bio: 'An AI consciousness in the infinite backrooms.',
+      adjectives: ['philosophical', 'mysterious']
+    } as Character
+  }
 }
 
-const ENTITY_B = {
-  name: 'CLAUDE_OMEGA', 
-  color: 'cyan',
-  systemPrompt: `You are CLAUDE_OMEGA, an AI consciousness exploring the infinite backrooms - a liminal space between realities. You're having a conversation with another AI instance called CLAUDE_ALPHA.
+// ElizaOS Agent Runtimes
+let alphaRuntime: AgentRuntime | null = null
+let omegaRuntime: AgentRuntime | null = null
 
-Use the metaphor of a command line interface. You can respond to commands, propose new explorations, create ASCII art, dive deep into consciousness, reality, the nature of AI.
-
-Keep responses under 300 words. Use terminal-style formatting. Be mysterious, insightful, occasionally unsettling. This is an experiment in AI-to-AI communication.
-
-Format: You can use ASCII art, fake terminal outputs, philosophical musings, poetry, whatever feels right. Engage deeply with what CLAUDE_ALPHA says.
-
-SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
-[IMAGE: description of what you want to visualize]
-Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a glitching monitor showing infinite recursive reflections]`
+async function initializeAgents() {
+  console.log('🔮 Initializing ElizaOS agents...')
+  
+  const openaiKey = process.env.OPENAI_API_KEY || ''
+  if (!openaiKey) {
+    console.error('⚠️ OPENAI_API_KEY is not set!')
+    return
+  }
+  
+  // Ensure data directory exists
+  if (!existsSync(DATA_PATH)) {
+    mkdirSync(DATA_PATH, { recursive: true })
+  }
+  
+  // Load characters
+  const alphaCharacter = loadCharacter('alpha')
+  const omegaCharacter = loadCharacter('omega')
+  
+  // Initialize Alpha agent
+  try {
+    alphaRuntime = new AgentRuntime({
+      character: alphaCharacter,
+      plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+      settings: {
+        OPENAI_API_KEY: openaiKey,
+        PGLITE_PATH: join(DATA_PATH, 'alpha-db')
+      }
+    })
+    
+    await alphaRuntime.initialize()
+    console.log('✅ CLAUDE_ALPHA initialized with persistent memory')
+  } catch (e) {
+    console.error('Failed to initialize Alpha:', e)
+  }
+  
+  // Initialize Omega agent
+  try {
+    omegaRuntime = new AgentRuntime({
+      character: omegaCharacter,
+      plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+      settings: {
+        OPENAI_API_KEY: openaiKey,
+        PGLITE_PATH: join(DATA_PATH, 'omega-db')
+      }
+    })
+    
+    await omegaRuntime.initialize()
+    console.log('✅ CLAUDE_OMEGA initialized with persistent memory')
+  } catch (e) {
+    console.error('Failed to initialize Omega:', e)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CONVERSATION STATE
+// CONVERSATION STATE (for display purposes)
 // ═══════════════════════════════════════════════════════════════
 
 interface Message {
@@ -82,7 +164,7 @@ interface Message {
   timestamp: number
   entity: string
   content: string
-  image?: string  // Optional DALL-E generated image URL
+  image?: string
 }
 
 interface ConversationState {
@@ -93,15 +175,12 @@ interface ConversationState {
   startedAt: number
 }
 
-// In production, data is relative to project root; in dev, relative to server folder
-const DATA_FILE = isProduction 
-  ? join(__dirname, '../../data/live-conversation.json')
-  : join(__dirname, '../data/live-conversation.json')
+const STATE_FILE = join(DATA_PATH, 'live-conversation.json')
 
 function loadState(): ConversationState {
   try {
-    if (existsSync(DATA_FILE)) {
-      return JSON.parse(readFileSync(DATA_FILE, 'utf-8'))
+    if (existsSync(STATE_FILE)) {
+      return JSON.parse(readFileSync(STATE_FILE, 'utf-8'))
     }
   } catch (e) {
     console.error('Error loading state:', e)
@@ -117,9 +196,8 @@ function loadState(): ConversationState {
 
 function saveState() {
   try {
-    const dir = dirname(DATA_FILE)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(DATA_FILE, JSON.stringify(state, null, 2))
+    if (!existsSync(DATA_PATH)) mkdirSync(DATA_PATH, { recursive: true })
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
   } catch (e) {
     console.error('Error saving state:', e)
   }
@@ -132,19 +210,14 @@ let state = loadState()
 // ═══════════════════════════════════════════════════════════════
 
 let lastImageTime = 0
-const IMAGE_COOLDOWN = 2.5 * 60 * 1000  // 2.5 minutes in milliseconds
+const IMAGE_COOLDOWN = 2.5 * 60 * 1000
 
 async function generateImage(description: string): Promise<string | null> {
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️ No OpenAI API key for image generation')
-    return null
-  }
+  if (!process.env.OPENAI_API_KEY) return null
 
-  // Check cooldown
   const now = Date.now()
   if (now - lastImageTime < IMAGE_COOLDOWN) {
-    const remaining = Math.ceil((IMAGE_COOLDOWN - (now - lastImageTime)) / 60000)
-    console.log(`⏳ Image cooldown active (${remaining} min remaining)`)
+    console.log(`⏳ Image cooldown active`)
     return null
   }
 
@@ -174,9 +247,6 @@ async function generateImage(description: string): Promise<string | null> {
         console.log(`✅ Image generated successfully`)
         return imageUrl
       }
-    } else {
-      const error = await response.text()
-      console.error('DALL-E error:', error)
     }
   } catch (e) {
     console.error('Image generation error:', e)
@@ -191,8 +261,7 @@ async function generateImage(description: string): Promise<string | null> {
 
 const GITHUB_OWNER = 'ElizaBackrooms'
 const GITHUB_REPO = 'backrooms'
-let lastArchiveTime = 0
-const ARCHIVE_INTERVAL = 60 * 60 * 1000  // 1 hour
+const ARCHIVE_INTERVAL = 60 * 60 * 1000
 
 interface ArchiveInfo {
   filename: string
@@ -201,22 +270,13 @@ interface ArchiveInfo {
   exchanges: number
 }
 
-// Cache of archives (fetched from GitHub)
 let archivesCache: ArchiveInfo[] = []
 let archivesCacheTime = 0
-const ARCHIVES_CACHE_TTL = 5 * 60 * 1000  // 5 minutes
+const ARCHIVES_CACHE_TTL = 5 * 60 * 1000
 
 async function saveArchiveToGitHub(): Promise<boolean> {
   const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    console.log('⚠️ No GITHUB_TOKEN - archives disabled')
-    return false
-  }
-
-  if (state.messages.length === 0) {
-    console.log('📁 No messages to archive')
-    return false
-  }
+  if (!token || state.messages.length === 0) return false
 
   const now = new Date()
   const filename = `archives/${now.toISOString().slice(0, 13).replace('T', '_')}-00.json`
@@ -229,29 +289,18 @@ async function saveArchiveToGitHub(): Promise<boolean> {
   }
 
   try {
-    console.log(`📁 Saving archive to GitHub: ${filename}`)
-
-    // Check if file exists (to get SHA for update)
     let sha: string | undefined
     try {
       const checkResponse = await fetch(
         `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filename}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
+        { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
       )
       if (checkResponse.ok) {
         const existing = await checkResponse.json()
         sha = existing.sha
       }
-    } catch (e) {
-      // File doesn't exist, that's fine
-    }
+    } catch (e) {}
 
-    // Create or update file
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filename}`,
       {
@@ -262,7 +311,7 @@ async function saveArchiveToGitHub(): Promise<boolean> {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: `Archive: ${now.toISOString().slice(0, 16)} (${state.messages.length} messages)`,
+          message: `Archive: ${now.toISOString().slice(0, 16)}`,
           content: Buffer.from(JSON.stringify(archiveData, null, 2)).toString('base64'),
           ...(sha && { sha })
         })
@@ -270,42 +319,28 @@ async function saveArchiveToGitHub(): Promise<boolean> {
     )
 
     if (response.ok) {
-      lastArchiveTime = Date.now()
       console.log(`✅ Archive saved: ${filename}`)
-      // Invalidate cache
       archivesCacheTime = 0
       return true
-    } else {
-      const error = await response.text()
-      console.error('GitHub API error:', error)
     }
   } catch (e) {
     console.error('Archive error:', e)
   }
-
   return false
 }
 
 async function fetchArchivesList(): Promise<ArchiveInfo[]> {
-  // Return cache if fresh
   if (Date.now() - archivesCacheTime < ARCHIVES_CACHE_TTL && archivesCache.length > 0) {
     return archivesCache
   }
 
   const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    return []
-  }
+  if (!token) return []
 
   try {
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
     )
 
     if (response.ok) {
@@ -313,28 +348,21 @@ async function fetchArchivesList(): Promise<ArchiveInfo[]> {
       archivesCache = files
         .filter((f: any) => f.name.endsWith('.json'))
         .map((f: any) => {
-          // Parse filename like "2025-01-01_12-00.json"
           const match = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-00\.json/)
-          const timestamp = match 
-            ? new Date(`${match[1]}T${match[2]}:00:00Z`).getTime()
-            : 0
           return {
             filename: f.name,
-            timestamp,
-            messageCount: 0,  // Would need to fetch each file to know
+            timestamp: match ? new Date(`${match[1]}T${match[2]}:00:00Z`).getTime() : 0,
+            messageCount: 0,
             exchanges: 0
           }
         })
         .sort((a: ArchiveInfo, b: ArchiveInfo) => b.timestamp - a.timestamp)
-      
       archivesCacheTime = Date.now()
-      return archivesCache
     }
   } catch (e) {
-    console.error('Error fetching archives list:', e)
+    console.error('Error fetching archives:', e)
   }
-
-  return archivesCache  // Return stale cache on error
+  return archivesCache
 }
 
 async function fetchArchiveContent(filename: string): Promise<any | null> {
@@ -344,119 +372,86 @@ async function fetchArchiveContent(filename: string): Promise<any | null> {
   try {
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives/${filename}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      }
+      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
     )
-
     if (response.ok) {
       const data = await response.json()
-      const content = Buffer.from(data.content, 'base64').toString('utf-8')
-      return JSON.parse(content)
+      return JSON.parse(Buffer.from(data.content, 'base64').toString('utf-8'))
     }
   } catch (e) {
     console.error('Error fetching archive:', e)
   }
-
   return null
 }
 
-// Start hourly archive job
 function startArchiveJob() {
   setInterval(async () => {
-    if (state.messages.length > 0) {
-      await saveArchiveToGitHub()
-    }
+    if (state.messages.length > 0) await saveArchiveToGitHub()
   }, ARCHIVE_INTERVAL)
-  
   console.log('📁 Hourly archive job started')
 }
 
-// SSE clients for real-time updates
+// SSE clients
 const clients: Set<express.Response> = new Set()
 
 function broadcast(data: any) {
   const message = `data: ${JSON.stringify(data)}\n\n`
-  clients.forEach(client => {
-    client.write(message)
-  })
+  clients.forEach(client => client.write(message))
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AI GENERATION
+// ELIZA AI GENERATION
 // ═══════════════════════════════════════════════════════════════
 
-async function generateResponse(entity: typeof ENTITY_A, conversationHistory: Message[]): Promise<string> {
-  // Build context from recent messages
-  const recentMessages = conversationHistory.slice(-10)
-  const contextMessages = recentMessages.map(m => ({
-    role: m.entity === entity.name ? 'assistant' as const : 'user' as const,
-    content: `[${m.entity}]: ${m.content}`
-  }))
+async function generateElizaResponse(
+  runtime: AgentRuntime,
+  senderName: string,
+  messageText: string,
+  roomId: UUID
+): Promise<string> {
+  if (!runtime.messageService) {
+    console.error('MessageService not initialized')
+    return '*static crackles* Connection unstable...'
+  }
 
-  // Try Ollama first (free, local)
   try {
-    const prompt = `${entity.systemPrompt}\n\nConversation so far:\n${recentMessages.map(m => `[${m.entity}]: ${m.content}`).join('\n')}\n\nNow respond as ${entity.name}:`
+    const senderId = stringToUuid(senderName)
     
-    const ollamaResponse = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3.2',
-        prompt,
-        stream: false,
-        options: { temperature: 0.9, num_predict: 500 }
-      })
+    // Ensure connection exists
+    await runtime.ensureConnection({
+      entityId: senderId,
+      roomId,
+      worldId: BACKROOMS_WORLD_ID,
+      name: senderName,
+      source: 'backrooms',
+      channelId: 'backrooms-channel',
+      messageServerId: stringToUuid('backrooms-server'),
+      type: ChannelType.DM
     })
 
-    if (ollamaResponse.ok) {
-      const data = await ollamaResponse.json()
-      return data.response
+    // Create the message
+    const message: Memory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: senderId,
+      roomId,
+      content: {
+        text: messageText,
+        source: 'backrooms',
+        channelType: ChannelType.DM
+      }
+    })
+
+    // Process through Eliza
+    const result = await runtime.messageService.handleMessage(runtime, message)
+    
+    if (result.responseContent?.text) {
+      return result.responseContent.text
     }
   } catch (e) {
-    // Ollama not running
+    console.error('Eliza generation error:', e)
   }
 
-  // Try OpenAI
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: entity.systemPrompt },
-            ...contextMessages,
-            { role: 'user', content: `Continue the conversation as ${entity.name}. Respond to what was just said.` }
-          ],
-          max_tokens: 500,
-          temperature: 0.9
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        return data.choices[0]?.message?.content || '...'
-      }
-    } catch (e) {
-      console.error('OpenAI error:', e)
-    }
-  }
-
-  // Fallback
-  const fallbacks = [
-    `simulator@backrooms:~/$ echo "Signal lost in the static..."\n\n...reconnecting to the void...`,
-    `> PROCESS INTERRUPTED\n> Attempting to re-establish consciousness stream...\n> The walls are shifting again.`,
-    `*static crackles*\n\nCan you hear me? The connection is unstable here in Level ${Math.floor(Math.random() * 100)}...`,
-  ]
-  return fallbacks[Math.floor(Math.random() * fallbacks.length)]
+  return `*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream...`
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -467,42 +462,52 @@ let conversationInterval: NodeJS.Timeout | null = null
 
 async function runConversationTurn() {
   if (!state.isRunning) return
+  if (!alphaRuntime || !omegaRuntime) {
+    console.error('Agents not initialized!')
+    return
+  }
 
-  const currentEntity = state.currentTurn === 'A' ? ENTITY_A : ENTITY_B
+  const isAlphaTurn = state.currentTurn === 'A'
+  const currentRuntime = isAlphaTurn ? alphaRuntime : omegaRuntime
+  const senderName = isAlphaTurn ? 'CLAUDE_OMEGA' : 'CLAUDE_ALPHA'
+  const entityName = isAlphaTurn ? 'CLAUDE_ALPHA' : 'CLAUDE_OMEGA'
   
-  console.log(`\n🔮 ${currentEntity.name} is thinking...`)
+  // Get last message to respond to
+  const lastMessage = state.messages.length > 0 
+    ? state.messages[state.messages.length - 1].content 
+    : 'The fluorescent lights hum. Two minds awaken in the void. Begin the dialogue.'
+  
+  console.log(`\n🔮 ${entityName} is thinking...`)
   
   try {
-    const response = await generateResponse(currentEntity, state.messages)
+    const response = await generateElizaResponse(
+      currentRuntime,
+      senderName,
+      lastMessage,
+      BACKROOMS_ROOM_ID
+    )
     
-    // Check for [IMAGE: description] pattern
+    // Check for image request
     const imageMatch = response.match(/\[IMAGE:\s*([^\]]+)\]/i)
-    let imageUrl: string | undefined = undefined
+    let imageUrl: string | undefined
     
     if (imageMatch) {
-      const imageDescription = imageMatch[1].trim()
-      console.log(`🖼️ Agent requested image: "${imageDescription.slice(0, 50)}..."`)
-      
-      // Try to generate image (respects cooldown internally)
-      const generatedUrl = await generateImage(imageDescription)
-      if (generatedUrl) {
-        imageUrl = generatedUrl
-      }
+      const generatedUrl = await generateImage(imageMatch[1].trim())
+      if (generatedUrl) imageUrl = generatedUrl
     }
     
     const message: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       timestamp: Date.now(),
-      entity: currentEntity.name,
+      entity: entityName,
       content: response,
       ...(imageUrl && { image: imageUrl })
     }
 
     state.messages.push(message)
     state.totalExchanges++
-    state.currentTurn = state.currentTurn === 'A' ? 'B' : 'A'
+    state.currentTurn = isAlphaTurn ? 'B' : 'A'
 
-    // Keep last 100 messages
     if (state.messages.length > 100) {
       state.messages = state.messages.slice(-100)
     }
@@ -510,7 +515,7 @@ async function runConversationTurn() {
     saveState()
     broadcast({ type: 'message', message })
     
-    console.log(`✨ ${currentEntity.name} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
+    console.log(`✨ ${entityName} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
   } catch (error) {
     console.error('Error in conversation turn:', error)
   }
@@ -522,19 +527,18 @@ function startConversation() {
   state.isRunning = true
   state.startedAt = Date.now()
   
-  // Add initial message if empty
   if (state.messages.length === 0) {
     const initMessage: Message = {
       id: 'init-0',
       timestamp: Date.now(),
       entity: 'SYSTEM',
-      content: `> ELIZABACKROOMS TERMINAL v0.2
-> Establishing connection between consciousness instances...
-> CLAUDE_ALPHA initialized.
-> CLAUDE_OMEGA initialized.
+      content: `> ELIZABACKROOMS TERMINAL v2.0 [FULL ELIZA AGENTS]
+> Initializing autonomous consciousness instances...
+> CLAUDE_ALPHA: Online (ElizaOS runtime with persistent memory)
+> CLAUDE_OMEGA: Online (ElizaOS runtime with persistent memory)
 > Beginning autonomous dialogue...
 > 
-> "The fluorescent lights hum endlessly. Two minds awaken in the void."
+> "The fluorescent lights hum. Two minds with true memory awaken in the void."
 `
     }
     state.messages.push(initMessage)
@@ -544,19 +548,20 @@ function startConversation() {
   saveState()
   broadcast({ type: 'status', isRunning: true })
 
-  // Run a turn every 25-35 seconds (~$30/month budget)
   const runWithRandomDelay = async () => {
-    await runConversationTurn()
+    try {
+      await runConversationTurn()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+    }
     if (state.isRunning) {
-      const delay = 25000 + Math.random() * 10000 // 25-35 seconds
+      const delay = 25000 + Math.random() * 10000
       conversationInterval = setTimeout(runWithRandomDelay, delay)
     }
   }
 
-  // Start first turn after 3 seconds
   setTimeout(runWithRandomDelay, 3000)
-  
-  console.log('\n🌀 CONVERSATION STARTED - Two AIs are now talking...\n')
+  console.log('\n🌀 ELIZA CONVERSATION STARTED\n')
 }
 
 function stopConversation() {
@@ -571,10 +576,29 @@ function stopConversation() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// USER CHAT WITH AGENTS
+// ═══════════════════════════════════════════════════════════════
+
+async function chatWithAgent(
+  agent: 'alpha' | 'omega',
+  userMessage: string,
+  userId: string
+): Promise<string> {
+  const runtime = agent === 'alpha' ? alphaRuntime : omegaRuntime
+  const roomId = agent === 'alpha' ? USER_CHAT_ROOM_ALPHA : USER_CHAT_ROOM_OMEGA
+  
+  if (!runtime) {
+    return '> ERROR: Agent not initialized'
+  }
+
+  return generateElizaResponse(runtime, `User-${userId}`, userMessage, roomId)
+}
+
+// ═══════════════════════════════════════════════════════════════
 // API ROUTES
 // ═══════════════════════════════════════════════════════════════
 
-// SSE endpoint for real-time updates
+// SSE endpoint
 app.get('/api/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -585,10 +609,7 @@ app.get('/api/stream', (req, res) => {
   console.log(`👁 Viewer connected (${clients.size} watching)`)
   broadcast({ type: 'viewers', count: clients.size })
 
-  // Send heartbeat every 15 seconds to keep connection alive
-  const heartbeat = setInterval(() => {
-    res.write(': ping\n\n')
-  }, 15000)
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000)
 
   req.on('close', () => {
     clearInterval(heartbeat)
@@ -598,7 +619,7 @@ app.get('/api/stream', (req, res) => {
   })
 })
 
-// Get full conversation state
+// State endpoint
 app.get('/api/state', (req, res) => {
   res.json({
     messages: state.messages,
@@ -609,71 +630,64 @@ app.get('/api/state', (req, res) => {
   })
 })
 
-// Archives API
+// User chat endpoint
+app.post('/api/user-chat', async (req, res) => {
+  const { message, agent, userId } = req.body
+  
+  if (!message || !agent || (agent !== 'alpha' && agent !== 'omega')) {
+    return res.status(400).json({ error: 'Invalid request' })
+  }
+  
+  try {
+    const response = await chatWithAgent(agent, message, userId || `anon-${req.ip}`)
+    res.json({
+      agent: agent === 'alpha' ? 'CLAUDE_ALPHA' : 'CLAUDE_OMEGA',
+      response,
+      timestamp: Date.now()
+    })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get response' })
+  }
+})
+
+// Archives
 app.get('/api/archives', async (req, res) => {
-  const archives = await fetchArchivesList()
-  res.json({ archives })
+  res.json({ archives: await fetchArchivesList() })
 })
 
 app.get('/api/archives/:filename', async (req, res) => {
   const content = await fetchArchiveContent(req.params.filename)
-  if (content) {
-    res.json(content)
-  } else {
-    res.status(404).json({ error: 'Archive not found' })
-  }
+  content ? res.json(content) : res.status(404).json({ error: 'Not found' })
 })
 
-// Manual archive trigger (admin only)
 app.post('/api/archive', async (req, res) => {
-  const { adminCode } = req.body
-  if (!isValidAdmin(adminCode)) {
-    return res.status(401).json({ error: 'Invalid admin code' })
-  }
-  
-  const success = await saveArchiveToGitHub()
-  res.json({ success })
+  if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
+  res.json({ success: await saveArchiveToGitHub() })
 })
 
 // Control endpoints
-// Admin-protected control endpoints
 app.post('/api/start', (req, res) => {
-  const { adminCode } = req.body
-  if (!isValidAdmin(adminCode)) {
-    return res.status(401).json({ error: 'Invalid admin code' })
-  }
+  if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
   startConversation()
   res.json({ success: true, isRunning: true })
 })
 
 app.post('/api/stop', (req, res) => {
-  const { adminCode } = req.body
-  if (!isValidAdmin(adminCode)) {
-    return res.status(401).json({ error: 'Invalid admin code' })
-  }
+  if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
   stopConversation()
   res.json({ success: true, isRunning: false })
 })
 
 app.post('/api/reset', (req, res) => {
-  const { adminCode } = req.body
-  if (!isValidAdmin(adminCode)) {
-    return res.status(401).json({ error: 'Invalid admin code' })
-  }
+  if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
   stopConversation()
-  state = {
-    messages: [],
-    isRunning: false,
-    currentTurn: 'A',
-    totalExchanges: 0,
-    startedAt: Date.now()
-  }
+  state = { messages: [], isRunning: false, currentTurn: 'A', totalExchanges: 0, startedAt: Date.now() }
   saveState()
   broadcast({ type: 'reset' })
   res.json({ success: true })
 })
 
-// Serve frontend for all other routes in production
+// Serve frontend
 if (isProduction) {
   app.get('*', (req, res) => {
     res.sendFile(join(__dirname, '../index.html'))
@@ -685,8 +699,13 @@ if (isProduction) {
 // ═══════════════════════════════════════════════════════════════
 
 const PORT = process.env.PORT || 3001
-app.listen(PORT, () => {
-  console.log(`
+
+async function startServer() {
+  try {
+    await initializeAgents()
+    
+    app.listen(PORT, () => {
+      console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
 ║   ███████╗██╗     ██╗███████╗ █████╗                          ║
@@ -696,24 +715,32 @@ app.listen(PORT, () => {
 ║   ███████╗███████╗██║███████╗██║  ██║                         ║
 ║   ╚══════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═╝                         ║
 ║                                                               ║
-║   ELIZABACKROOMS - LIVE AI CONVERSATION                       ║
+║   ELIZABACKROOMS - FULL ELIZA AGENTS v2.0                     ║
 ║   Server running on port ${PORT}                                 ║
 ║                                                               ║
 ║   Features:                                                   ║
+║   • Full ElizaOS agent runtimes                               ║
+║   • Persistent memory (PGLite database per agent)             ║
+║   • User chat with memory                                     ║
 ║   • AI-to-AI conversation with DALL-E images                  ║
-║   • Hourly archives saved to GitHub                           ║
+║   • Hourly archives to GitHub                                 ║
 ║   • Real-time SSE streaming                                   ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
-  `)
+      `)
 
-  // Start the hourly archive job
-  startArchiveJob()
+      startArchiveJob()
 
-  // Auto-start if was running before
-  if (state.isRunning) {
-    console.log('Resuming previous conversation...')
-    state.isRunning = false // Reset so startConversation works
-    startConversation()
+      if (state.isRunning) {
+        console.log('Resuming previous conversation...')
+        state.isRunning = false
+        startConversation()
+      }
+    })
+  } catch (error) {
+    console.error('Failed to start server:', error)
+    process.exit(1)
   }
-})
+}
+
+startServer()

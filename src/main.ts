@@ -41,6 +41,14 @@ class BackroomsViewer {
   private archiveTitle: HTMLElement
   private backToListBtn: HTMLButtonElement
 
+  // Chat elements
+  private chatConversation: HTMLElement
+  private chatInput: HTMLInputElement
+  private chatSendBtn: HTMLButtonElement
+  private selectedAgent: 'alpha' | 'omega' = 'alpha'
+  private chatMessages: { sender: string; content: string; timestamp: number }[] = []
+  private userId: string
+
   constructor() {
     this.conversation = document.getElementById('conversation')!
     this.statusIndicator = document.getElementById('status-indicator')!
@@ -58,7 +66,20 @@ class BackroomsViewer {
     this.archiveTitle = document.getElementById('archive-title')!
     this.backToListBtn = document.getElementById('back-to-list') as HTMLButtonElement
 
+    // Chat elements
+    this.chatConversation = document.getElementById('chat-conversation')!
+    this.chatInput = document.getElementById('chat-input') as HTMLInputElement
+    this.chatSendBtn = document.getElementById('chat-send') as HTMLButtonElement
+
+    // Generate or retrieve user ID for chat persistence
+    this.userId = localStorage.getItem('backrooms-user-id') || this.generateUserId()
+    localStorage.setItem('backrooms-user-id', this.userId)
+
     this.init()
+  }
+
+  private generateUserId(): string {
+    return 'user-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
   }
 
   private async init() {
@@ -66,6 +87,7 @@ class BackroomsViewer {
     this.connectToStream()
     this.setupControls()
     this.setupTabs()
+    this.setupChat()
   }
 
   private async loadInitialState() {
@@ -373,6 +395,127 @@ class BackroomsViewer {
 
   private scrollToBottom() {
     this.conversation.scrollTop = this.conversation.scrollHeight
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CHAT FUNCTIONALITY
+  // ═══════════════════════════════════════════════════════════════
+
+  private setupChat() {
+    // Agent selector buttons
+    const agentBtns = document.querySelectorAll('.agent-btn')
+    agentBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        agentBtns.forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        this.selectedAgent = btn.getAttribute('data-agent') as 'alpha' | 'omega'
+      })
+    })
+
+    // Send button
+    this.chatSendBtn.addEventListener('click', () => this.sendChatMessage())
+
+    // Enter key to send
+    this.chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        this.sendChatMessage()
+      }
+    })
+  }
+
+  private async sendChatMessage() {
+    const message = this.chatInput.value.trim()
+    if (!message) return
+
+    // Disable input while processing
+    this.chatInput.disabled = true
+    this.chatSendBtn.disabled = true
+    this.chatInput.value = ''
+
+    // Clear welcome message if first message
+    const welcome = this.chatConversation.querySelector('.chat-welcome')
+    if (welcome) {
+      welcome.remove()
+    }
+
+    // Display user message
+    this.displayChatMessage('user', 'YOU', message)
+
+    // Show thinking indicator
+    const thinkingDiv = document.createElement('div')
+    thinkingDiv.className = 'chat-thinking'
+    thinkingDiv.textContent = `${this.selectedAgent === 'alpha' ? 'CLAUDE_ALPHA' : 'CLAUDE_OMEGA'} is thinking...`
+    this.chatConversation.appendChild(thinkingDiv)
+    this.scrollChatToBottom()
+
+    try {
+      const response = await fetch(`${API_URL}/api/user-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          agent: this.selectedAgent,
+          userId: this.userId
+        })
+      })
+
+      // Remove thinking indicator
+      thinkingDiv.remove()
+
+      if (response.ok) {
+        const data = await response.json()
+        this.displayChatMessage(
+          this.selectedAgent,
+          data.agent,
+          data.response
+        )
+      } else {
+        this.displayChatMessage(
+          'error',
+          'SYSTEM',
+          '> ERROR: Failed to reach the entity. The connection is unstable...'
+        )
+      }
+    } catch (error) {
+      thinkingDiv.remove()
+      this.displayChatMessage(
+        'error',
+        'SYSTEM',
+        '> ERROR: The backrooms are shifting. Try again.'
+      )
+    }
+
+    // Re-enable input
+    this.chatInput.disabled = false
+    this.chatSendBtn.disabled = false
+    this.chatInput.focus()
+  }
+
+  private displayChatMessage(type: string, sender: string, content: string) {
+    const div = document.createElement('div')
+    div.className = `chat-message ${type}`
+
+    const time = new Date().toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    div.innerHTML = `
+      <div class="chat-message-header">
+        <span class="chat-message-sender ${type}">[${sender}]</span>
+        <span class="chat-message-time">${time}</span>
+      </div>
+      <div class="chat-message-content">${this.escapeHtml(content)}</div>
+    `
+
+    this.chatConversation.appendChild(div)
+    this.scrollChatToBottom()
+  }
+
+  private scrollChatToBottom() {
+    this.chatConversation.scrollTop = this.chatConversation.scrollHeight
   }
 }
 
