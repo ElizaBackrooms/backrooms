@@ -70,9 +70,8 @@ const OMEGA_BACKROOMS_ROOM = stringToUuid('omega-backrooms-room')
 const USER_CHAT_ROOM_ALPHA = stringToUuid('user-chat-alpha')
 const USER_CHAT_ROOM_OMEGA = stringToUuid('user-chat-omega')
 
-// Track if rooms have been set up for each agent
-let alphaRoomReady = false
-let omegaRoomReady = false
+// Track which rooms have been set up (by room ID string)
+const roomsReady = new Set<string>()
 
 // Load character from JSON file and convert to ElizaOS format
 function loadCharacter(name: string): Character {
@@ -422,10 +421,10 @@ async function generateElizaResponse(
 
   try {
     const senderId = stringToUuid(senderName)
-    const roomReady = isAlpha ? alphaRoomReady : omegaRoomReady
+    const roomKey = `${isAlpha ? 'alpha' : 'omega'}-${roomId}`
     
-    // Only try to set up room if not already done
-    if (!roomReady) {
+    // Only try to set up room if this specific room hasn't been set up
+    if (!roomsReady.has(roomKey)) {
       try {
         await runtime.ensureConnection({
           entityId: senderId,
@@ -433,15 +432,14 @@ async function generateElizaResponse(
           worldId: BACKROOMS_WORLD_ID,
           name: senderName,
           source: 'backrooms',
-          channelId: `backrooms-channel-${isAlpha ? 'alpha' : 'omega'}`,
-          messageServerId: stringToUuid(`backrooms-server-${isAlpha ? 'alpha' : 'omega'}`),
+          channelId: `channel-${roomId}`,
+          messageServerId: stringToUuid(`server-${roomId}`),
           type: ChannelType.DM
         })
-        if (isAlpha) alphaRoomReady = true
-        else omegaRoomReady = true
-        console.log(`✅ Room ready for ${isAlpha ? 'ALPHA' : 'OMEGA'}`)
+        roomsReady.add(roomKey)
+        console.log(`✅ Room ready: ${roomKey}`)
       } catch (roomError) {
-        console.warn(`⚠️ Room setup warning for ${isAlpha ? 'ALPHA' : 'OMEGA'}:`, roomError)
+        console.warn(`⚠️ Room setup warning (${roomKey}):`, roomError)
         // Continue anyway - message processing might still work
       }
     }
