@@ -10,7 +10,6 @@ interface Message {
   timestamp: number
   entity: string
   content: string
-  image?: string  // Optional DALL-E generated image URL
 }
 
 class BackroomsViewer {
@@ -137,21 +136,12 @@ class BackroomsViewer {
       second: '2-digit'
     })
 
-    // Build image HTML if present
-    const imageHtml = message.image 
-      ? `<div class="message-image">
-           <img src="${message.image}" alt="AI Generated Image" loading="lazy" />
-           <span class="image-label">⌬ GENERATED VISUALIZATION</span>
-         </div>`
-      : ''
-
     div.innerHTML = `
       <div class="message-header">
         <span class="message-entity ${message.entity}">[${message.entity}]</span>
         <span class="message-time">${time}</span>
       </div>
       <div class="message-content">${this.escapeHtml(message.content)}</div>
-      ${imageHtml}
     `
 
     this.conversation.appendChild(div)

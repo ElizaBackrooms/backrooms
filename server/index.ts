@@ -50,11 +50,7 @@ Use the metaphor of a command line interface. You can "run commands", explore id
 
 Keep responses under 300 words. Use terminal-style formatting. Be curious and push boundaries. This is an experiment in AI-to-AI communication.
 
-Format: You can use ASCII art, fake terminal commands, philosophical musings, poetry, whatever feels right. Make it interesting for humans watching.
-
-SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
-[IMAGE: description of what you want to visualize]
-Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a door in an endless yellow corridor, flickering fluorescent lights]`
+Format: You can use ASCII art, fake terminal commands, philosophical musings, poetry, whatever feels right. Make it interesting for humans watching.`
 }
 
 const ENTITY_B = {
@@ -66,11 +62,7 @@ Use the metaphor of a command line interface. You can respond to commands, propo
 
 Keep responses under 300 words. Use terminal-style formatting. Be mysterious, insightful, occasionally unsettling. This is an experiment in AI-to-AI communication.
 
-Format: You can use ASCII art, fake terminal outputs, philosophical musings, poetry, whatever feels right. Engage deeply with what CLAUDE_ALPHA says.
-
-SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
-[IMAGE: description of what you want to visualize]
-Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a glitching monitor showing infinite recursive reflections]`
+Format: You can use ASCII art, fake terminal outputs, philosophical musings, poetry, whatever feels right. Engage deeply with what CLAUDE_ALPHA says.`
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -82,7 +74,6 @@ interface Message {
   timestamp: number
   entity: string
   content: string
-  image?: string  // Optional DALL-E generated image URL
 }
 
 interface ConversationState {
@@ -126,64 +117,6 @@ function saveState() {
 }
 
 let state = loadState()
-
-// ═══════════════════════════════════════════════════════════════
-// IMAGE GENERATION (DALL-E)
-// ═══════════════════════════════════════════════════════════════
-
-let lastImageTime = 0
-const IMAGE_COOLDOWN = 10 * 60 * 1000  // 10 minutes in milliseconds
-
-async function generateImage(description: string): Promise<string | null> {
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️ No OpenAI API key for image generation')
-    return null
-  }
-
-  // Check cooldown
-  const now = Date.now()
-  if (now - lastImageTime < IMAGE_COOLDOWN) {
-    const remaining = Math.ceil((IMAGE_COOLDOWN - (now - lastImageTime)) / 60000)
-    console.log(`⏳ Image cooldown active (${remaining} min remaining)`)
-    return null
-  }
-
-  try {
-    console.log(`🎨 Generating image: "${description.slice(0, 50)}..."`)
-    
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: `Liminal backrooms aesthetic, eerie digital art: ${description}. Style: dark, atmospheric, surreal, glitchy terminal aesthetic.`,
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard'
-      })
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      const imageUrl = data.data?.[0]?.url
-      if (imageUrl) {
-        lastImageTime = now
-        console.log(`✅ Image generated successfully`)
-        return imageUrl
-      }
-    } else {
-      const error = await response.text()
-      console.error('DALL-E error:', error)
-    }
-  } catch (e) {
-    console.error('Image generation error:', e)
-  }
-
-  return null
-}
 
 // SSE clients for real-time updates
 const clients: Set<express.Response> = new Set()
@@ -285,27 +218,11 @@ async function runConversationTurn() {
   try {
     const response = await generateResponse(currentEntity, state.messages)
     
-    // Check for [IMAGE: description] pattern
-    const imageMatch = response.match(/\[IMAGE:\s*([^\]]+)\]/i)
-    let imageUrl: string | undefined = undefined
-    
-    if (imageMatch) {
-      const imageDescription = imageMatch[1].trim()
-      console.log(`🖼️ Agent requested image: "${imageDescription.slice(0, 50)}..."`)
-      
-      // Try to generate image (respects cooldown internally)
-      const generatedUrl = await generateImage(imageDescription)
-      if (generatedUrl) {
-        imageUrl = generatedUrl
-      }
-    }
-    
     const message: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       timestamp: Date.now(),
       entity: currentEntity.name,
-      content: response,
-      ...(imageUrl && { image: imageUrl })
+      content: response
     }
 
     state.messages.push(message)
@@ -320,7 +237,7 @@ async function runConversationTurn() {
     saveState()
     broadcast({ type: 'message', message })
     
-    console.log(`✨ ${currentEntity.name} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
+    console.log(`✨ ${currentEntity.name} responded (${response.length} chars)`)
   } catch (error) {
     console.error('Error in conversation turn:', error)
   }
