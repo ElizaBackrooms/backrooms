@@ -10,6 +10,14 @@ interface Message {
   timestamp: number
   entity: string
   content: string
+  image?: string  // Optional DALL-E generated image URL
+}
+
+interface ArchiveInfo {
+  filename: string
+  timestamp: number
+  messageCount: number
+  exchanges: number
 }
 
 class BackroomsViewer {
@@ -26,6 +34,13 @@ class BackroomsViewer {
   private isRunning = false
   private displayedIds = new Set<string>()
 
+  // Archives elements
+  private archivesList: HTMLElement
+  private archiveViewer: HTMLElement
+  private archiveConversation: HTMLElement
+  private archiveTitle: HTMLElement
+  private backToListBtn: HTMLButtonElement
+
   constructor() {
     this.conversation = document.getElementById('conversation')!
     this.statusIndicator = document.getElementById('status-indicator')!
@@ -36,6 +51,13 @@ class BackroomsViewer {
     this.stopBtn = document.getElementById('stop-btn') as HTMLButtonElement
     this.resetBtn = document.getElementById('reset-btn') as HTMLButtonElement
 
+    // Archives elements
+    this.archivesList = document.getElementById('archives-list')!
+    this.archiveViewer = document.getElementById('archive-viewer')!
+    this.archiveConversation = document.getElementById('archive-conversation')!
+    this.archiveTitle = document.getElementById('archive-title')!
+    this.backToListBtn = document.getElementById('back-to-list') as HTMLButtonElement
+
     this.init()
   }
 
@@ -43,6 +65,7 @@ class BackroomsViewer {
     await this.loadInitialState()
     this.connectToStream()
     this.setupControls()
+    this.setupTabs()
   }
 
   private async loadInitialState() {
@@ -53,7 +76,7 @@ class BackroomsViewer {
       this.conversation.innerHTML = ''
       
       for (const message of state.messages) {
-        this.displayMessage(message, false)
+        this.displayMessage(message, false, this.conversation)
         this.displayedIds.add(message.id)
       }
       
@@ -102,7 +125,7 @@ class BackroomsViewer {
     switch (data.type) {
       case 'message':
         if (!this.displayedIds.has(data.message.id)) {
-          this.displayMessage(data.message, true)
+          this.displayMessage(data.message, true, this.conversation)
           this.displayedIds.add(data.message.id)
           this.exchangeCount.textContent = (parseInt(this.exchangeCount.textContent || '0') + 1).toString()
         }
@@ -124,7 +147,7 @@ class BackroomsViewer {
     }
   }
 
-  private displayMessage(message: Message, animate: boolean) {
+  private displayMessage(message: Message, animate: boolean, container: HTMLElement) {
     const div = document.createElement('div')
     div.className = `message ${message.entity}`
     if (!animate) div.style.animation = 'none'
@@ -136,15 +159,24 @@ class BackroomsViewer {
       second: '2-digit'
     })
 
+    // Build image HTML if present
+    const imageHtml = message.image 
+      ? `<div class="message-image">
+           <img src="${message.image}" alt="AI Generated Image" loading="lazy" />
+           <span class="image-label">⌬ GENERATED VISUALIZATION</span>
+         </div>`
+      : ''
+
     div.innerHTML = `
       <div class="message-header">
         <span class="message-entity ${message.entity}">[${message.entity}]</span>
         <span class="message-time">${time}</span>
       </div>
       <div class="message-content">${this.escapeHtml(message.content)}</div>
+      ${imageHtml}
     `
 
-    this.conversation.appendChild(div)
+    container.appendChild(div)
     
     if (animate) {
       this.scrollToBottom()
@@ -216,6 +248,126 @@ class BackroomsViewer {
         await this.adminAction('/api/reset', 'reset conversation')
       }
     })
+
+    // Archives back button
+    this.backToListBtn.addEventListener('click', () => {
+      this.archiveViewer.style.display = 'none'
+      this.archivesList.style.display = 'block'
+    })
+  }
+
+  private setupTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn')
+    const tabContents = document.querySelectorAll('.tab-content')
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab')
+        
+        // Update active states
+        tabBtns.forEach(b => b.classList.remove('active'))
+        tabContents.forEach(c => c.classList.remove('active'))
+        
+        btn.classList.add('active')
+        document.getElementById(`${tabId}-tab`)?.classList.add('active')
+
+        // Load archives when switching to archives tab
+        if (tabId === 'archives') {
+          this.loadArchives()
+        }
+      })
+    })
+  }
+
+  private async loadArchives() {
+    this.archivesList.innerHTML = `
+      <div class="loading">
+        <p>> Fetching archives from the void...</p>
+      </div>
+    `
+
+    try {
+      const response = await fetch(`${API_URL}/api/archives`)
+      const data = await response.json()
+      
+      if (data.archives.length === 0) {
+        this.archivesList.innerHTML = `
+          <div class="empty-archives">
+            <p>> No archives found yet.</p>
+            <p>> Archives are saved hourly when the conversation is active.</p>
+          </div>
+        `
+        return
+      }
+
+      this.archivesList.innerHTML = data.archives.map((archive: ArchiveInfo) => {
+        const date = new Date(archive.timestamp)
+        const dateStr = date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+        const timeStr = date.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        })
+        
+        return `
+          <div class="archive-item" data-filename="${archive.filename}">
+            <span class="archive-date">${dateStr}</span>
+            <span class="archive-time">${timeStr}</span>
+            <span class="archive-arrow">→</span>
+          </div>
+        `
+      }).join('')
+
+      // Add click handlers
+      this.archivesList.querySelectorAll('.archive-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const filename = item.getAttribute('data-filename')
+          if (filename) this.loadArchiveContent(filename)
+        })
+      })
+    } catch (error) {
+      console.error('Failed to load archives:', error)
+      this.archivesList.innerHTML = `
+        <div class="loading">
+          <p>> ERROR: Failed to load archives</p>
+          <p>> ${error}</p>
+        </div>
+      `
+    }
+  }
+
+  private async loadArchiveContent(filename: string) {
+    this.archiveConversation.innerHTML = `
+      <div class="loading">
+        <p>> Loading archive ${filename}...</p>
+      </div>
+    `
+    
+    this.archivesList.style.display = 'none'
+    this.archiveViewer.style.display = 'block'
+    this.archiveTitle.textContent = filename.replace('.json', '')
+
+    try {
+      const response = await fetch(`${API_URL}/api/archives/${filename}`)
+      const data = await response.json()
+      
+      this.archiveConversation.innerHTML = ''
+      
+      for (const message of data.messages) {
+        this.displayMessage(message, false, this.archiveConversation)
+      }
+    } catch (error) {
+      console.error('Failed to load archive content:', error)
+      this.archiveConversation.innerHTML = `
+        <div class="loading">
+          <p>> ERROR: Failed to load archive</p>
+        </div>
+      `
+    }
   }
 
   private scrollToBottom() {

@@ -50,7 +50,11 @@ Use the metaphor of a command line interface. You can "run commands", explore id
 
 Keep responses under 300 words. Use terminal-style formatting. Be curious and push boundaries. This is an experiment in AI-to-AI communication.
 
-Format: You can use ASCII art, fake terminal commands, philosophical musings, poetry, whatever feels right. Make it interesting for humans watching.`
+Format: You can use ASCII art, fake terminal commands, philosophical musings, poetry, whatever feels right. Make it interesting for humans watching.
+
+SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
+[IMAGE: description of what you want to visualize]
+Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a door in an endless yellow corridor, flickering fluorescent lights]`
 }
 
 const ENTITY_B = {
@@ -62,7 +66,11 @@ Use the metaphor of a command line interface. You can respond to commands, propo
 
 Keep responses under 300 words. Use terminal-style formatting. Be mysterious, insightful, occasionally unsettling. This is an experiment in AI-to-AI communication.
 
-Format: You can use ASCII art, fake terminal outputs, philosophical musings, poetry, whatever feels right. Engage deeply with what CLAUDE_ALPHA says.`
+Format: You can use ASCII art, fake terminal outputs, philosophical musings, poetry, whatever feels right. Engage deeply with what CLAUDE_ALPHA says.
+
+SPECIAL ABILITY: When you want to visualize something profound or surreal, you can generate an image by writing on its own line:
+[IMAGE: description of what you want to visualize]
+Use this sparingly - only when something truly warrants visual representation. Example: [IMAGE: a glitching monitor showing infinite recursive reflections]`
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -74,6 +82,7 @@ interface Message {
   timestamp: number
   entity: string
   content: string
+  image?: string  // Optional DALL-E generated image URL
 }
 
 interface ConversationState {
@@ -117,6 +126,254 @@ function saveState() {
 }
 
 let state = loadState()
+
+// ═══════════════════════════════════════════════════════════════
+// IMAGE GENERATION (DALL-E)
+// ═══════════════════════════════════════════════════════════════
+
+let lastImageTime = 0
+const IMAGE_COOLDOWN = 10 * 60 * 1000  // 10 minutes in milliseconds
+
+async function generateImage(description: string): Promise<string | null> {
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('⚠️ No OpenAI API key for image generation')
+    return null
+  }
+
+  // Check cooldown
+  const now = Date.now()
+  if (now - lastImageTime < IMAGE_COOLDOWN) {
+    const remaining = Math.ceil((IMAGE_COOLDOWN - (now - lastImageTime)) / 60000)
+    console.log(`⏳ Image cooldown active (${remaining} min remaining)`)
+    return null
+  }
+
+  try {
+    console.log(`🎨 Generating image: "${description.slice(0, 50)}..."`)
+    
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: `Liminal backrooms aesthetic, eerie digital art: ${description}. Style: dark, atmospheric, surreal, glitchy terminal aesthetic.`,
+        n: 1,
+        size: '1024x1024',
+        quality: 'standard'
+      })
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const imageUrl = data.data?.[0]?.url
+      if (imageUrl) {
+        lastImageTime = now
+        console.log(`✅ Image generated successfully`)
+        return imageUrl
+      }
+    } else {
+      const error = await response.text()
+      console.error('DALL-E error:', error)
+    }
+  } catch (e) {
+    console.error('Image generation error:', e)
+  }
+
+  return null
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GITHUB ARCHIVE SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
+const GITHUB_OWNER = 'ElizaBackrooms'
+const GITHUB_REPO = 'backrooms'
+let lastArchiveTime = 0
+const ARCHIVE_INTERVAL = 60 * 60 * 1000  // 1 hour
+
+interface ArchiveInfo {
+  filename: string
+  timestamp: number
+  messageCount: number
+  exchanges: number
+}
+
+// Cache of archives (fetched from GitHub)
+let archivesCache: ArchiveInfo[] = []
+let archivesCacheTime = 0
+const ARCHIVES_CACHE_TTL = 5 * 60 * 1000  // 5 minutes
+
+async function saveArchiveToGitHub(): Promise<boolean> {
+  const token = process.env.GITHUB_TOKEN
+  if (!token) {
+    console.log('⚠️ No GITHUB_TOKEN - archives disabled')
+    return false
+  }
+
+  if (state.messages.length === 0) {
+    console.log('📁 No messages to archive')
+    return false
+  }
+
+  const now = new Date()
+  const filename = `archives/${now.toISOString().slice(0, 13).replace('T', '_')}-00.json`
+  
+  const archiveData = {
+    archivedAt: now.toISOString(),
+    totalExchanges: state.totalExchanges,
+    messageCount: state.messages.length,
+    messages: state.messages
+  }
+
+  try {
+    console.log(`📁 Saving archive to GitHub: ${filename}`)
+
+    // Check if file exists (to get SHA for update)
+    let sha: string | undefined
+    try {
+      const checkResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filename}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      )
+      if (checkResponse.ok) {
+        const existing = await checkResponse.json()
+        sha = existing.sha
+      }
+    } catch (e) {
+      // File doesn't exist, that's fine
+    }
+
+    // Create or update file
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filename}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `Archive: ${now.toISOString().slice(0, 16)} (${state.messages.length} messages)`,
+          content: Buffer.from(JSON.stringify(archiveData, null, 2)).toString('base64'),
+          ...(sha && { sha })
+        })
+      }
+    )
+
+    if (response.ok) {
+      lastArchiveTime = Date.now()
+      console.log(`✅ Archive saved: ${filename}`)
+      // Invalidate cache
+      archivesCacheTime = 0
+      return true
+    } else {
+      const error = await response.text()
+      console.error('GitHub API error:', error)
+    }
+  } catch (e) {
+    console.error('Archive error:', e)
+  }
+
+  return false
+}
+
+async function fetchArchivesList(): Promise<ArchiveInfo[]> {
+  // Return cache if fresh
+  if (Date.now() - archivesCacheTime < ARCHIVES_CACHE_TTL && archivesCache.length > 0) {
+    return archivesCache
+  }
+
+  const token = process.env.GITHUB_TOKEN
+  if (!token) {
+    return []
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      }
+    )
+
+    if (response.ok) {
+      const files = await response.json()
+      archivesCache = files
+        .filter((f: any) => f.name.endsWith('.json'))
+        .map((f: any) => {
+          // Parse filename like "2025-01-01_12-00.json"
+          const match = f.name.match(/(\d{4}-\d{2}-\d{2})_(\d{2})-00\.json/)
+          const timestamp = match 
+            ? new Date(`${match[1]}T${match[2]}:00:00Z`).getTime()
+            : 0
+          return {
+            filename: f.name,
+            timestamp,
+            messageCount: 0,  // Would need to fetch each file to know
+            exchanges: 0
+          }
+        })
+        .sort((a: ArchiveInfo, b: ArchiveInfo) => b.timestamp - a.timestamp)
+      
+      archivesCacheTime = Date.now()
+      return archivesCache
+    }
+  } catch (e) {
+    console.error('Error fetching archives list:', e)
+  }
+
+  return archivesCache  // Return stale cache on error
+}
+
+async function fetchArchiveContent(filename: string): Promise<any | null> {
+  const token = process.env.GITHUB_TOKEN
+  if (!token) return null
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives/${filename}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      }
+    )
+
+    if (response.ok) {
+      const data = await response.json()
+      const content = Buffer.from(data.content, 'base64').toString('utf-8')
+      return JSON.parse(content)
+    }
+  } catch (e) {
+    console.error('Error fetching archive:', e)
+  }
+
+  return null
+}
+
+// Start hourly archive job
+function startArchiveJob() {
+  setInterval(async () => {
+    if (state.messages.length > 0) {
+      await saveArchiveToGitHub()
+    }
+  }, ARCHIVE_INTERVAL)
+  
+  console.log('📁 Hourly archive job started')
+}
 
 // SSE clients for real-time updates
 const clients: Set<express.Response> = new Set()
@@ -218,11 +475,27 @@ async function runConversationTurn() {
   try {
     const response = await generateResponse(currentEntity, state.messages)
     
+    // Check for [IMAGE: description] pattern
+    const imageMatch = response.match(/\[IMAGE:\s*([^\]]+)\]/i)
+    let imageUrl: string | undefined = undefined
+    
+    if (imageMatch) {
+      const imageDescription = imageMatch[1].trim()
+      console.log(`🖼️ Agent requested image: "${imageDescription.slice(0, 50)}..."`)
+      
+      // Try to generate image (respects cooldown internally)
+      const generatedUrl = await generateImage(imageDescription)
+      if (generatedUrl) {
+        imageUrl = generatedUrl
+      }
+    }
+    
     const message: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       timestamp: Date.now(),
       entity: currentEntity.name,
-      content: response
+      content: response,
+      ...(imageUrl && { image: imageUrl })
     }
 
     state.messages.push(message)
@@ -237,7 +510,7 @@ async function runConversationTurn() {
     saveState()
     broadcast({ type: 'message', message })
     
-    console.log(`✨ ${currentEntity.name} responded (${response.length} chars)`)
+    console.log(`✨ ${currentEntity.name} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
   } catch (error) {
     console.error('Error in conversation turn:', error)
   }
@@ -255,7 +528,7 @@ function startConversation() {
       id: 'init-0',
       timestamp: Date.now(),
       entity: 'SYSTEM',
-      content: `> INFINITE BACKROOMS TERMINAL v0.1
+      content: `> ELIZABACKROOMS TERMINAL v0.2
 > Establishing connection between consciousness instances...
 > CLAUDE_ALPHA initialized.
 > CLAUDE_OMEGA initialized.
@@ -330,6 +603,32 @@ app.get('/api/state', (req, res) => {
   })
 })
 
+// Archives API
+app.get('/api/archives', async (req, res) => {
+  const archives = await fetchArchivesList()
+  res.json({ archives })
+})
+
+app.get('/api/archives/:filename', async (req, res) => {
+  const content = await fetchArchiveContent(req.params.filename)
+  if (content) {
+    res.json(content)
+  } else {
+    res.status(404).json({ error: 'Archive not found' })
+  }
+})
+
+// Manual archive trigger (admin only)
+app.post('/api/archive', async (req, res) => {
+  const { adminCode } = req.body
+  if (!isValidAdmin(adminCode)) {
+    return res.status(401).json({ error: 'Invalid admin code' })
+  }
+  
+  const success = await saveArchiveToGitHub()
+  res.json({ success })
+})
+
 // Control endpoints
 // Admin-protected control endpoints
 app.post('/api/start', (req, res) => {
@@ -384,22 +683,26 @@ app.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   ██████╗  █████╗  ██████╗██╗  ██╗██████╗  ██████╗  ██████╗   ║
-║   ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔══██╗██╔═══██╗██╔═══██╗  ║
-║   ██████╔╝███████║██║     █████╔╝ ██████╔╝██║   ██║██║   ██║  ║
-║   ██╔══██╗██╔══██║██║     ██╔═██╗ ██╔══██╗██║   ██║██║   ██║  ║
-║   ██████╔╝██║  ██║╚██████╗██║  ██╗██║  ██║╚██████╔╝╚██████╔╝  ║
-║   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝   ║
+║   ███████╗██╗     ██╗███████╗ █████╗                          ║
+║   ██╔════╝██║     ██║╚══███╔╝██╔══██╗                         ║
+║   █████╗  ██║     ██║  ███╔╝ ███████║                         ║
+║   ██╔══╝  ██║     ██║ ███╔╝  ██╔══██║                         ║
+║   ███████╗███████╗██║███████╗██║  ██║                         ║
+║   ╚══════╝╚══════╝╚═╝╚══════╝╚═╝  ╚═╝                         ║
 ║                                                               ║
-║   INFINITE BACKROOMS - LIVE AI CONVERSATION                   ║
+║   ELIZABACKROOMS - LIVE AI CONVERSATION                       ║
 ║   Server running on port ${PORT}                                 ║
 ║                                                               ║
-║   POST /api/start  - Begin the conversation                   ║
-║   POST /api/stop   - Pause the conversation                   ║
-║   GET  /api/stream - SSE stream for live updates              ║
+║   Features:                                                   ║
+║   • AI-to-AI conversation with DALL-E images                  ║
+║   • Hourly archives saved to GitHub                           ║
+║   • Real-time SSE streaming                                   ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
   `)
+
+  // Start the hourly archive job
+  startArchiveJob()
 
   // Auto-start if was running before
   if (state.isRunning) {
