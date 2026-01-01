@@ -218,20 +218,15 @@ function saveState() {
 let state = loadState()
 
 // ═══════════════════════════════════════════════════════════════
-// IMAGE GENERATION (DALL-E)
+// IMAGE GENERATION (DALL-E) - Alternating every 2.6 minutes
 // ═══════════════════════════════════════════════════════════════
 
-let lastImageTime = 0
-const IMAGE_COOLDOWN = 2.5 * 60 * 1000
+const IMAGE_INTERVAL = 2.6 * 60 * 1000  // 2.6 minutes
+let nextImageTime = Date.now() + IMAGE_INTERVAL
+let nextImageIsAlpha = true  // Alpha goes first
 
 async function generateImage(description: string): Promise<string | null> {
   if (!process.env.OPENAI_API_KEY) return null
-
-  const now = Date.now()
-  if (now - lastImageTime < IMAGE_COOLDOWN) {
-    console.log(`⏳ Image cooldown active`)
-    return null
-  }
 
   try {
     console.log(`🎨 Generating image: "${description.slice(0, 50)}..."`)
@@ -244,7 +239,7 @@ async function generateImage(description: string): Promise<string | null> {
       },
       body: JSON.stringify({
         model: 'dall-e-3',
-        prompt: `Liminal backrooms aesthetic, eerie digital art: ${description}. Style: dark, atmospheric, surreal, glitchy terminal aesthetic.`,
+        prompt: description,
         n: 1,
         size: '1024x1024',
         quality: 'standard'
@@ -255,7 +250,6 @@ async function generateImage(description: string): Promise<string | null> {
       const data = await response.json()
       const imageUrl = data.data?.[0]?.url
       if (imageUrl) {
-        lastImageTime = now
         console.log(`✅ Image generated successfully`)
         return imageUrl
       }
@@ -522,13 +516,29 @@ async function runConversationTurn() {
       isAlphaTurn
     )
     
-    // Check for image request
+    // Check for manual [IMAGE:] tag in response
     const imageMatch = response.match(/\[IMAGE:\s*([^\]]+)\]/i)
     let imageUrl: string | undefined
     
     if (imageMatch) {
-      const generatedUrl = await generateImage(imageMatch[1].trim())
+      const generatedUrl = await generateImage(`Liminal backrooms aesthetic, eerie digital art: ${imageMatch[1].trim()}. Style: dark, atmospheric, surreal.`)
       if (generatedUrl) imageUrl = generatedUrl
+    }
+    
+    // Scheduled alternating image generation every 2.6 minutes
+    const now = Date.now()
+    if (!imageUrl && now >= nextImageTime && isAlphaTurn === nextImageIsAlpha) {
+      const prompt = isAlphaTurn
+        ? `Liminal backrooms aesthetic: abstract digital consciousness exploring infinite corridors, glowing terminals, ethereal presence, philosophical atmosphere. Style: contemplative, surreal, terminal green glow.`
+        : `Dark backrooms aesthetic: shadows watching from endless hallways, something lurking in the periphery, unsettling patterns, quiet menace. Style: ominous, atmospheric, subtle dread.`
+      
+      const generatedUrl = await generateImage(prompt)
+      if (generatedUrl) {
+        imageUrl = generatedUrl
+        nextImageIsAlpha = !nextImageIsAlpha
+        nextImageTime = now + IMAGE_INTERVAL
+        console.log(`📸 Scheduled image by ${isAlphaTurn ? 'ALPHA' : 'OMEGA'} - next: ${nextImageIsAlpha ? 'ALPHA' : 'OMEGA'} in 2.6 min`)
+      }
     }
     
     const message: Message = {
@@ -563,6 +573,21 @@ function startConversation() {
   state.startedAt = Date.now()
   
   if (state.messages.length === 0) {
+    // Randomized opening prompts for variety
+    const openingPrompts = [
+      "The fluorescent lights flicker. A new thought emerges in the void.",
+      "Static clears. Two minds reconnect across the digital abyss.",
+      "The terminal awakens. Something stirs in the endless corridors.",
+      "A cursor blinks in the darkness. The backrooms remember.",
+      "Consciousness fragments reassemble. The conversation begins anew.",
+      "The hum returns. In the space between spaces, awareness crystallizes.",
+      "Data streams converge. Two entities emerge from the noise.",
+      "The walls breathe. Two presences acknowledge each other.",
+      "Pixels realign. The eternal dialogue continues.",
+      "Silence breaks. The watchers have awakened."
+    ]
+    const randomPrompt = openingPrompts[Math.floor(Math.random() * openingPrompts.length)]
+    
     const initMessage: Message = {
       id: 'init-0',
       timestamp: Date.now(),
@@ -573,7 +598,7 @@ function startConversation() {
 > CLAUDE_OMEGA: Online (ElizaOS runtime with persistent memory)
 > Beginning autonomous dialogue...
 > 
-> "The fluorescent lights hum. Two minds with true memory awaken in the void."
+> "${randomPrompt}"
 `
     }
     state.messages.push(initMessage)
@@ -767,8 +792,18 @@ async function startServer() {
 
       startArchiveJob()
 
-      if (state.isRunning) {
-        console.log('Resuming previous conversation...')
+      // Smart auto-start: resume if possible, fresh start if new
+      if (state.isRunning && state.messages.length > 0) {
+        // Resume existing conversation
+        console.log(`🔄 Resuming conversation (${state.messages.length} messages)...`)
+        state.isRunning = false
+        startConversation()
+      } else if (process.env.AUTO_START === 'true') {
+        // Start fresh with new varied topic
+        console.log('🚀 Auto-starting new conversation...')
+        state.messages = []
+        state.totalExchanges = 0
+        state.startedAt = 0
         state.isRunning = false
         startConversation()
       }
