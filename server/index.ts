@@ -132,7 +132,7 @@ let state = loadState()
 // ═══════════════════════════════════════════════════════════════
 
 let lastImageTime = 0
-const IMAGE_COOLDOWN = 10 * 60 * 1000  // 10 minutes in milliseconds
+const IMAGE_COOLDOWN = 2.5 * 60 * 1000  // 2.5 minutes in milliseconds
 
 async function generateImage(description: string): Promise<string | null> {
   if (!process.env.OPENAI_API_KEY) {
@@ -585,7 +585,13 @@ app.get('/api/stream', (req, res) => {
   console.log(`👁 Viewer connected (${clients.size} watching)`)
   broadcast({ type: 'viewers', count: clients.size })
 
+  // Send heartbeat every 15 seconds to keep connection alive
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n')
+  }, 15000)
+
   req.on('close', () => {
+    clearInterval(heartbeat)
     clients.delete(res)
     console.log(`👁 Viewer disconnected (${clients.size} watching)`)
     broadcast({ type: 'viewers', count: clients.size })

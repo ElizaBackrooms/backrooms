@@ -112,10 +112,11 @@ class BackroomsViewer {
     this.eventSource.onerror = () => {
       console.error('Stream connection error')
       this.statusIndicator.className = 'status-indicator stopped'
-      this.statusText.textContent = 'DISCONNECTED'
+      this.statusText.textContent = 'RECONNECTING...'
       
-      // Reconnect after 5 seconds
-      setTimeout(() => {
+      // Reconnect after 5 seconds and reload state
+      setTimeout(async () => {
+        await this.loadInitialState()
         this.connectToStream()
       }, 5000)
     }
