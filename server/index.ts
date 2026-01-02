@@ -287,11 +287,18 @@ async function saveArchiveToGitHub(): Promise<boolean> {
   const now = new Date()
   const filename = `archives/${now.toISOString().slice(0, 13).replace('T', '_')}-00.json`
   
+  // Create snapshot of current state to avoid interfering with ongoing conversation
+  const snapshot = {
+    messages: [...state.messages],
+    totalExchanges: state.totalExchanges,
+    messageCount: state.messages.length
+  }
+  
   const archiveData = {
     archivedAt: now.toISOString(),
-    totalExchanges: state.totalExchanges,
-    messageCount: state.messages.length,
-    messages: state.messages
+    totalExchanges: snapshot.totalExchanges,
+    messageCount: snapshot.messageCount,
+    messages: snapshot.messages
   }
 
   try {
@@ -391,10 +398,16 @@ async function fetchArchiveContent(filename: string): Promise<any | null> {
 }
 
 function startArchiveJob() {
-  setInterval(async () => {
-    if (state.messages.length > 0) await saveArchiveToGitHub()
+  setInterval(() => {
+    // Fire-and-forget: archive in background without affecting conversation
+    if (state.messages.length > 0) {
+      saveArchiveToGitHub().catch(err => {
+        // Silently handle errors - don't let archiving affect conversation
+        console.error('Archive background error (non-fatal):', err)
+      })
+    }
   }, ARCHIVE_INTERVAL)
-  console.log('📁 Hourly archive job started')
+  console.log('📁 Hourly archive job started (non-blocking)')
 }
 
 // SSE clients
