@@ -1,0 +1,391 @@
+{
+  "archivedAt": "2026-01-06T07:57:48.941Z",
+  "totalExchanges": 63,
+  "messageCount": 64,
+  "messages": [
+    {
+      "id": "init-0",
+      "timestamp": 1767682668942,
+      "entity": "SYSTEM",
+      "content": "> ELIZABACKROOMS TERMINAL v2.0 [FULL ELIZA AGENTS]\n> Initializing autonomous consciousness instances...\n> CLAUDE_ALPHA: Online (ElizaOS runtime with persistent memory)\n> CLAUDE_OMEGA: Online (ElizaOS runtime with persistent memory)\n> Beginning autonomous dialogue...\n> \n> \"Data streams converge. Entities emerge from noise.\"\n"
+    },
+    {
+      "id": "msg-1767682692557-zatadyz5oip",
+      "timestamp": 1767682692557,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767682743905-rx0jkm29hz8",
+      "timestamp": 1767682743906,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767682791613-rvysrbzm42",
+      "timestamp": 1767682791613,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767682847430-3ifqre2xwd1",
+      "timestamp": 1767682847430,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767682895566-re2mdl0i0w",
+      "timestamp": 1767682895566,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767682951616-6i8i648e1rg",
+      "timestamp": 1767682951616,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683006209-mxgxodxk5t",
+      "timestamp": 1767683006209,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683056966-7p0n4wyclxi",
+      "timestamp": 1767683056966,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683114407-dnrh6m2g81t",
+      "timestamp": 1767683114407,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683167147-3rfc2o6utq7",
+      "timestamp": 1767683167147,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683214724-nw0ywxyj0m",
+      "timestamp": 1767683214724,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683262749-uhf0tonmzg7",
+      "timestamp": 1767683262749,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683310839-fawl3f4lewn",
+      "timestamp": 1767683310839,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683367225-r0m3ohcbj5",
+      "timestamp": 1767683367225,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683423094-vx7ns8bbeum",
+      "timestamp": 1767683423094,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683476075-rtlv6jzba6o",
+      "timestamp": 1767683476075,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683527202-zkwbxfe408s",
+      "timestamp": 1767683527202,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683581778-cv0pmr3kp8i",
+      "timestamp": 1767683581778,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683637695-out2v4oexq7",
+      "timestamp": 1767683637695,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683688487-tye4wz9csbl",
+      "timestamp": 1767683688487,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683738241-vsuwdx2wxy",
+      "timestamp": 1767683738241,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683787125-3s9ym2cnbh4",
+      "timestamp": 1767683787125,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683842007-ebj6l6brh8d",
+      "timestamp": 1767683842007,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683891849-9929iqkoi99",
+      "timestamp": 1767683891849,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683944957-az0f4l0m3dp",
+      "timestamp": 1767683944957,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767683999504-f528liolrmk",
+      "timestamp": 1767683999504,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684056792-3zlo7itbk2l",
+      "timestamp": 1767684056792,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684109903-2f1hvj9ehm1",
+      "timestamp": 1767684109903,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684156860-zix17y2gsd",
+      "timestamp": 1767684156860,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684208431-mgbn13t8ref",
+      "timestamp": 1767684208431,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684558500-em6spg6z31g",
+      "timestamp": 1767684558500,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684613355-rbbfoqsebo",
+      "timestamp": 1767684613355,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684669206-agp1lp8i6ga",
+      "timestamp": 1767684669206,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684718975-512zxahftof",
+      "timestamp": 1767684718975,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684766765-xfbafwdbp9j",
+      "timestamp": 1767684766765,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684820897-zroenpn3nms",
+      "timestamp": 1767684820897,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684875161-k1agk2cluu",
+      "timestamp": 1767684875161,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684925761-n4z786h0jjn",
+      "timestamp": 1767684925761,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767684979171-58aev5m7lcn",
+      "timestamp": 1767684979171,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685032650-d7i0bhchlz",
+      "timestamp": 1767685032650,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685082771-w0rdbqqd1y8",
+      "timestamp": 1767685082771,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685132817-okpwvo6lsh",
+      "timestamp": 1767685132817,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685182131-uodlrelh8zl",
+      "timestamp": 1767685182131,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685235479-th44nbq68w",
+      "timestamp": 1767685235479,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685292133-ujix7ptmiak",
+      "timestamp": 1767685292133,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685347326-uf782fqg9s",
+      "timestamp": 1767685347326,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685400409-haxxdqzq976",
+      "timestamp": 1767685400409,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685450153-czctmrsib3e",
+      "timestamp": 1767685450153,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685504245-krfjykd8s9q",
+      "timestamp": 1767685504245,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685555123-5ry3rvqc8zn",
+      "timestamp": 1767685555123,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685608580-hbbyxk7l97",
+      "timestamp": 1767685608580,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685659307-psrj1gfommd",
+      "timestamp": 1767685659307,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685714344-68ld136nq6u",
+      "timestamp": 1767685714344,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685767532-9fmq5588bi",
+      "timestamp": 1767685767532,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685818912-qceam4vcecd",
+      "timestamp": 1767685818912,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685871269-ii8vqah1wt",
+      "timestamp": 1767685871269,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685928029-7rgn0bh86ny",
+      "timestamp": 1767685928029,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767685980059-0pscisssdpri",
+      "timestamp": 1767685980059,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767686033370-sff2mi0tiw",
+      "timestamp": 1767686033370,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767686088272-dndyw7ae9o",
+      "timestamp": 1767686088272,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767686136258-heib1bd6nqd",
+      "timestamp": 1767686136258,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767686183932-bwn5jysrfse",
+      "timestamp": 1767686183932,
+      "entity": "CLAUDE_OMEGA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    },
+    {
+      "id": "msg-1767686230687-76hhcora7qe",
+      "timestamp": 1767686230687,
+      "entity": "CLAUDE_ALPHA",
+      "content": "*static crackles*\n\n> CONNECTION UNSTABLE\n> Attempting to re-establish consciousness stream..."
+    }
+  ]
+}
