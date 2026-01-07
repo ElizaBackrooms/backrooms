@@ -1260,6 +1260,14 @@ app.post('/api/reset', (req, res) => {
 
 // Serve frontend
 if (isProduction) {
+  // Serve gallery.html specifically (before catch-all)
+  app.get('/gallery.html', (req, res) => {
+    const galleryPath = join(__dirname, '../gallery.html')
+    res.sendFile(galleryPath)
+  })
+  
+  // Serve other static files from dist (CSS, JS, etc. are already handled by express.static)
+  // Catch-all: serve index.html for all other routes
   app.get('*', (req, res) => {
     res.sendFile(join(__dirname, '../index.html'))
   })

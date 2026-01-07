@@ -34,6 +34,9 @@ function renderGallery() {
   const gallery = document.getElementById('gallery');
   if (!gallery) return;
   
+  // Clear loading state
+  gallery.innerHTML = '';
+  
   if (galleryImages.length === 0) {
     gallery.innerHTML = '<div class="empty">No images generated yet. Check back soon...</div>';
     return;
