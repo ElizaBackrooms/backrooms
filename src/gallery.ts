@@ -120,6 +120,6 @@ window.addEventListener('click', (event) => {
 // Initialize
 loadGallery();
 
-// Refresh gallery every 5 minutes
+// Refresh gallery every 5 minutes (images generate every 30 minutes)
 setInterval(loadGallery, 5 * 60 * 1000);
 

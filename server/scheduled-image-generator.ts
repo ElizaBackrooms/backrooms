@@ -32,7 +32,7 @@ class ScheduledImageGenerator {
   private isGenerating: boolean = false;
   
   private nextAgent: 'ALPHA' | 'OMEGA' = 'ALPHA';
-  private readonly IMAGE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private readonly IMAGE_INTERVAL = 30 * 60 * 1000; // 30 minutes
   
   private readonly GALLERY_DIR = join(__dirname, '../data/gallery');
   private readonly GALLERY_INDEX_FILE = join(this.GALLERY_DIR, 'gallery-index.json');
@@ -104,7 +104,7 @@ class ScheduledImageGenerator {
   }
   
   start() {
-    console.log(`🎨 Starting alternating image generation (every 5 minutes)`);
+    console.log(`🎨 Starting alternating image generation (every 30 minutes)`);
     console.log(`📍 Next generator: CLAUDE_${this.nextAgent}`);
     
     this.intervalId = setInterval(() => {
