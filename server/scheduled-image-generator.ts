@@ -1,4 +1,4 @@
-import { AgentRuntime, Memory, UUID } from '@elizaos/core';
+import { AgentRuntime, Memory, UUID, createMessageMemory, stringToUuid } from '@elizaos/core';
 import crypto from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, createWriteStream } from 'fs';
 import { join, dirname } from 'path';
@@ -181,19 +181,17 @@ class ScheduledImageGenerator {
       this.saveGallery();
       
       // Store in agent memories
-      const messageId = crypto.randomUUID() as UUID;
-      const imageMemory: Memory = {
-        id: messageId,
-        userId: (currentRuntime as any).agentId,
-        agentId: (currentRuntime as any).agentId,
+      const entityId = stringToUuid(agentName);
+      const imageMemory: Memory = createMessageMemory({
+        id: crypto.randomUUID() as UUID,
+        entityId: entityId,
         roomId: this.backroomsRoomId,
         content: {
           text: `[${agentName} manifests a visual fragment]\n\n💭 Thought: ${thought}`,
           source: agentName,
           action: 'SCHEDULED_IMAGE_GENERATION'
-        },
-        createdAt: Date.now()
-      };
+        }
+      });
       
       const alphaDb = getDatabaseAdapter(this.alphaRuntime);
       const omegaDb = getDatabaseAdapter(this.omegaRuntime);
