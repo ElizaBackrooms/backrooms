@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from 'dotenv'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { v4 as uuidv4 } from 'uuid'
@@ -59,9 +59,17 @@ const DATA_PATH = isProduction
   ? join(__dirname, '../../data')
   : join(__dirname, '../data')
 
+const ARCHIVES_PATH = isProduction
+  ? join(__dirname, '../../archives')
+  : join(__dirname, '../archives')
+
 const CHARACTERS_PATH = isProduction
   ? join(__dirname, '../../characters')
   : join(__dirname, '../characters')
+
+// Ensure directories exist
+if (!existsSync(DATA_PATH)) mkdirSync(DATA_PATH, { recursive: true })
+if (!existsSync(ARCHIVES_PATH)) mkdirSync(ARCHIVES_PATH, { recursive: true })
 
 // Room/World IDs for conversations - each agent gets its own room to avoid conflicts
 const BACKROOMS_WORLD_ID = stringToUuid('backrooms-world')
@@ -188,11 +196,84 @@ interface ConversationState {
 }
 
 const STATE_FILE = join(DATA_PATH, 'live-conversation.json')
+const MEMORY_FILE = join(DATA_PATH, 'agent-memory.json')
+
+// ═══════════════════════════════════════════════════════════════
+// PERSISTENT AGENT MEMORY SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
+interface AgentMemoryEntry {
+  content: string
+  timestamp: string
+}
+
+interface AgentMemoryStore {
+  claudeAlpha: {
+    memories: AgentMemoryEntry[]
+    lastActive: string | null
+  }
+  claudeOmega: {
+    memories: AgentMemoryEntry[]
+    lastActive: string | null
+  }
+}
+
+let agentMemory: AgentMemoryStore = {
+  claudeAlpha: { memories: [], lastActive: null },
+  claudeOmega: { memories: [], lastActive: null }
+}
+
+// Load agent memory from file
+function loadAgentMemory(): void {
+  try {
+    if (existsSync(MEMORY_FILE)) {
+      const content = readFileSync(MEMORY_FILE, 'utf-8')
+      agentMemory = JSON.parse(content)
+      console.log(`✅ Loaded agent memories: Alpha=${agentMemory.claudeAlpha.memories.length}, Omega=${agentMemory.claudeOmega.memories.length}`)
+    }
+  } catch (e) {
+    console.error('Error loading agent memory:', e)
+  }
+}
+
+// Save agent memory to file
+function saveAgentMemory(): void {
+  try {
+    writeFileSync(MEMORY_FILE, JSON.stringify(agentMemory, null, 2))
+  } catch (e) {
+    console.error('Error saving agent memory:', e)
+  }
+}
+
+// Add memory for an agent
+function addMemory(agent: 'claudeAlpha' | 'claudeOmega', memory: string): void {
+  agentMemory[agent].memories.push({
+    content: memory,
+    timestamp: new Date().toISOString()
+  })
+  agentMemory[agent].lastActive = new Date().toISOString()
+  
+  // Keep only last 50 memories
+  if (agentMemory[agent].memories.length > 50) {
+    agentMemory[agent].memories = agentMemory[agent].memories.slice(-50)
+  }
+  
+  saveAgentMemory()
+}
+
+// Get recent memories for context
+function getRecentMemories(agent: 'claudeAlpha' | 'claudeOmega', count: number = 10): string[] {
+  return agentMemory[agent].memories
+    .slice(-count)
+    .map(m => m.content)
+}
 
 function loadState(): ConversationState {
   try {
     if (existsSync(STATE_FILE)) {
-      return JSON.parse(readFileSync(STATE_FILE, 'utf-8'))
+      const loadedState = JSON.parse(readFileSync(STATE_FILE, 'utf-8'))
+      console.log(`✅ Loaded ${loadedState.messages?.length || 0} existing messages from conversation log`)
+      return loadedState
     }
   } catch (e) {
     console.error('Error loading state:', e)
@@ -206,7 +287,7 @@ function loadState(): ConversationState {
   }
 }
 
-function saveState() {
+function saveState(): void {
   try {
     if (!existsSync(DATA_PATH)) mkdirSync(DATA_PATH, { recursive: true })
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
@@ -216,6 +297,7 @@ function saveState() {
 }
 
 let state = loadState()
+loadAgentMemory()
 
 // ═══════════════════════════════════════════════════════════════
 // IMAGE GENERATION (DALL-E) - Alternating every 10 minutes
@@ -262,25 +344,78 @@ async function generateImage(description: string): Promise<string | null> {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// GITHUB ARCHIVE SYSTEM
+// LOCAL + GITHUB ARCHIVE SYSTEM (Non-resetting)
 // ═══════════════════════════════════════════════════════════════
 
 const GITHUB_OWNER = 'ElizaBackrooms'
 const GITHUB_REPO = 'backrooms'
-const ARCHIVE_INTERVAL = 60 * 60 * 1000
+const ARCHIVE_INTERVAL = 60 * 60 * 1000 // Hourly
 
 interface ArchiveInfo {
   filename: string
   timestamp: number
   messageCount: number
   exchanges: number
+  size?: number
+  created?: Date
 }
 
 let archivesCache: ArchiveInfo[] = []
 let archivesCacheTime = 0
 const ARCHIVES_CACHE_TTL = 5 * 60 * 1000
 
-async function saveArchiveToGitHub(): Promise<boolean> {
+// Track last archive date for daily rollover
+let lastArchiveDate: string = new Date().toDateString()
+
+// Generate archive filename based on date
+function getArchiveFilename(date: Date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  return `${year}-${month}-${day}_${hour}00.json`
+}
+
+// Save archive locally WITHOUT clearing the live conversation
+function saveLocalArchive(reason: string = 'scheduled'): string | null {
+  if (state.messages.length === 0) return null
+  
+  try {
+    const archiveFilename = getArchiveFilename()
+    const archivePath = join(ARCHIVES_PATH, archiveFilename)
+    
+    // Create snapshot to avoid interfering with conversation
+    const archiveData = {
+      archivedAt: new Date().toISOString(),
+      reason: reason,
+      messageCount: state.messages.length,
+      totalExchanges: state.totalExchanges,
+      conversation: [...state.messages],
+      memory: agentMemory
+    }
+    
+    writeFileSync(archivePath, JSON.stringify(archiveData, null, 2), 'utf-8')
+    console.log(`📦 Local archive saved: ${archiveFilename} (${state.messages.length} messages, reason: ${reason})`)
+    return archiveFilename
+  } catch (e) {
+    console.error('Error creating local archive:', e)
+    return null
+  }
+}
+
+// Check if we need daily rollover archive
+function checkDailyArchive(): void {
+  const today = new Date().toDateString()
+  
+  if (today !== lastArchiveDate && state.messages.length > 0) {
+    console.log('🕐 New day detected, creating daily rollover archive...')
+    saveLocalArchive('daily_rollover')
+    lastArchiveDate = today
+  }
+}
+
+// Save to GitHub (async, non-blocking)
+async function saveArchiveToGitHub(reason: string = 'hourly_snapshot'): Promise<boolean> {
   const token = process.env.GITHUB_TOKEN
   if (!token || state.messages.length === 0) return false
 
@@ -296,9 +431,11 @@ async function saveArchiveToGitHub(): Promise<boolean> {
   
   const archiveData = {
     archivedAt: now.toISOString(),
+    reason: reason,
     totalExchanges: snapshot.totalExchanges,
     messageCount: snapshot.messageCount,
-    messages: snapshot.messages
+    messages: snapshot.messages,
+    memory: agentMemory
   }
 
   try {
@@ -324,7 +461,7 @@ async function saveArchiveToGitHub(): Promise<boolean> {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: `Archive: ${now.toISOString().slice(0, 16)}`,
+          message: `Archive: ${now.toISOString().slice(0, 16)} (${reason})`,
           content: Buffer.from(JSON.stringify(archiveData, null, 2)).toString('base64'),
           ...(sha && { sha })
         })
@@ -332,23 +469,74 @@ async function saveArchiveToGitHub(): Promise<boolean> {
     )
 
     if (response.ok) {
-      console.log(`✅ Archive saved: ${filename}`)
+      console.log(`✅ GitHub archive saved: ${filename}`)
       archivesCacheTime = 0
       return true
     }
   } catch (e) {
-    console.error('Archive error:', e)
+    console.error('GitHub archive error:', e)
   }
   return false
 }
 
+// List local archives
+function listLocalArchives(): ArchiveInfo[] {
+  try {
+    if (!existsSync(ARCHIVES_PATH)) return []
+    
+    const files = readdirSync(ARCHIVES_PATH)
+      .filter(f => f.endsWith('.json'))
+      .sort()
+      .reverse()
+    
+    return files.map(filename => {
+      const filepath = join(ARCHIVES_PATH, filename)
+      const stats = statSync(filepath)
+      const match = filename.match(/(\d{4}-\d{2}-\d{2})_(\d{2})00\.json/)
+      return {
+        filename,
+        timestamp: match ? new Date(`${match[1]}T${match[2]}:00:00Z`).getTime() : 0,
+        messageCount: 0,
+        exchanges: 0,
+        size: stats.size,
+        created: stats.birthtime
+      }
+    })
+  } catch (e) {
+    console.error('Error listing local archives:', e)
+    return []
+  }
+}
+
+// Get local archive content
+function getLocalArchiveContent(filename: string): any | null {
+  try {
+    const filepath = join(ARCHIVES_PATH, filename)
+    if (!existsSync(filepath)) return null
+    return JSON.parse(readFileSync(filepath, 'utf-8'))
+  } catch (e) {
+    console.error('Error reading local archive:', e)
+    return null
+  }
+}
+
 async function fetchArchivesList(): Promise<ArchiveInfo[]> {
+  // Combine local and GitHub archives
+  const localArchives = listLocalArchives()
+  
   if (Date.now() - archivesCacheTime < ARCHIVES_CACHE_TTL && archivesCache.length > 0) {
-    return archivesCache
+    // Merge local with cached GitHub
+    const allArchives = [...localArchives]
+    for (const ga of archivesCache) {
+      if (!allArchives.find(a => a.filename === ga.filename)) {
+        allArchives.push(ga)
+      }
+    }
+    return allArchives.sort((a, b) => b.timestamp - a.timestamp)
   }
 
   const token = process.env.GITHUB_TOKEN
-  if (!token) return []
+  if (!token) return localArchives
 
   try {
     const response = await fetch(
@@ -369,16 +557,29 @@ async function fetchArchivesList(): Promise<ArchiveInfo[]> {
             exchanges: 0
           }
         })
-        .sort((a: ArchiveInfo, b: ArchiveInfo) => b.timestamp - a.timestamp)
       archivesCacheTime = Date.now()
+      
+      // Merge with local
+      const allArchives = [...localArchives]
+      for (const ga of archivesCache) {
+        if (!allArchives.find(a => a.filename === ga.filename)) {
+          allArchives.push(ga)
+        }
+      }
+      return allArchives.sort((a, b) => b.timestamp - a.timestamp)
     }
   } catch (e) {
-    console.error('Error fetching archives:', e)
+    console.error('Error fetching GitHub archives:', e)
   }
-  return archivesCache
+  return localArchives
 }
 
 async function fetchArchiveContent(filename: string): Promise<any | null> {
+  // Try local first
+  const localContent = getLocalArchiveContent(filename)
+  if (localContent) return localContent
+  
+  // Fall back to GitHub
   const token = process.env.GITHUB_TOKEN
   if (!token) return null
 
@@ -397,17 +598,23 @@ async function fetchArchiveContent(filename: string): Promise<any | null> {
   return null
 }
 
-function startArchiveJob() {
+function startArchiveJob(): void {
   setInterval(() => {
     // Fire-and-forget: archive in background without affecting conversation
     if (state.messages.length > 0) {
-      saveArchiveToGitHub().catch(err => {
-        // Silently handle errors - don't let archiving affect conversation
-        console.error('Archive background error (non-fatal):', err)
+      // Check for daily rollover first
+      checkDailyArchive()
+      
+      // Save local archive
+      saveLocalArchive('hourly_snapshot')
+      
+      // Save to GitHub (async, non-blocking)
+      saveArchiveToGitHub('hourly_snapshot').catch(err => {
+        console.error('GitHub archive background error (non-fatal):', err)
       })
     }
   }, ARCHIVE_INTERVAL)
-  console.log('📁 Hourly archive job started (non-blocking)')
+  console.log('📁 Hourly archive job started (local + GitHub, non-blocking)')
 }
 
 // SSE clients
@@ -600,9 +807,31 @@ async function runConversationTurn() {
     saveState()
     broadcast({ type: 'message', message })
     
+    // Save significant statements to memory
+    const agentKey = isAlphaTurn ? 'claudeAlpha' : 'claudeOmega'
+    if (response.length > 100 && (
+      response.toLowerCase().includes('remember') ||
+      response.toLowerCase().includes('recall') ||
+      response.toLowerCase().includes('realized') ||
+      response.toLowerCase().includes('understand') ||
+      response.toLowerCase().includes('believe') ||
+      response.toLowerCase().includes('know that') ||
+      response.toLowerCase().includes('truth') ||
+      state.totalExchanges % 10 === 0 // Also save every 10th exchange
+    )) {
+      addMemory(agentKey, response.substring(0, 300))
+    }
+    
+    // Update last active time
+    agentMemory[agentKey].lastActive = new Date().toISOString()
+    saveAgentMemory()
+    
     console.log(`✨ ${entityName} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
   } catch (error) {
     console.error('Error in conversation turn:', error)
+    // Save state on errors to prevent data loss
+    saveState()
+    saveAgentMemory()
   }
 }
 
@@ -610,7 +839,16 @@ function startConversation() {
   if (state.isRunning) return
   
   state.isRunning = true
-  state.startedAt = Date.now()
+  
+  // Resume from existing conversation
+  if (state.messages.length > 0) {
+    const lastMessage = state.messages[state.messages.length - 1]
+    console.log(`🔄 Resuming conversation from message #${state.messages.length}`)
+    console.log(`📍 Last speaker was: ${lastMessage.entity}`)
+    // Keep startedAt from original session
+  } else {
+    state.startedAt = Date.now()
+  }
   
   if (state.messages.length === 0) {
     // Randomized opening prompts for variety
@@ -678,6 +916,49 @@ function stopConversation() {
   broadcast({ type: 'status', isRunning: false })
   console.log('\n⏹ CONVERSATION STOPPED\n')
 }
+
+// ═══════════════════════════════════════════════════════════════
+// EMERGENCY ARCHIVE ON CRASH/SHUTDOWN
+// ═══════════════════════════════════════════════════════════════
+
+function gracefulShutdown(signal: string): void {
+  console.log(`\n⚠️  Received ${signal}, archiving before shutdown...`)
+  
+  if (state.messages.length > 0) {
+    saveLocalArchive(`emergency_${signal.toLowerCase()}`)
+  }
+  
+  saveState()
+  saveAgentMemory()
+  
+  console.log('✅ Archive complete, shutting down safely')
+  process.exit(0)
+}
+
+// Handle various shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error)
+  if (state.messages.length > 0) {
+    saveLocalArchive('emergency_crash')
+  }
+  saveState()
+  saveAgentMemory()
+  process.exit(1)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
+  if (state.messages.length > 0) {
+    saveLocalArchive('emergency_rejection')
+  }
+  // Don't exit on unhandled rejections, just save state
+  saveState()
+  saveAgentMemory()
+})
 
 // ═══════════════════════════════════════════════════════════════
 // USER CHAT WITH AGENTS
@@ -767,7 +1048,37 @@ app.get('/api/archives/:filename', async (req, res) => {
 
 app.post('/api/archive', async (req, res) => {
   if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
-  res.json({ success: await saveArchiveToGitHub() })
+  
+  // Save both local and GitHub archives
+  const localFilename = saveLocalArchive('manual_trigger')
+  const githubSuccess = await saveArchiveToGitHub('manual_trigger')
+  
+  res.json({ 
+    success: !!localFilename || githubSuccess,
+    localFilename,
+    githubSuccess
+  })
+})
+
+// Memory status endpoint
+app.get('/api/memory', (req, res) => {
+  res.json({
+    claudeAlpha: {
+      memoryCount: agentMemory.claudeAlpha.memories.length,
+      lastActive: agentMemory.claudeAlpha.lastActive,
+      recentMemories: getRecentMemories('claudeAlpha', 5)
+    },
+    claudeOmega: {
+      memoryCount: agentMemory.claudeOmega.memories.length,
+      lastActive: agentMemory.claudeOmega.lastActive,
+      recentMemories: getRecentMemories('claudeOmega', 5)
+    }
+  })
+})
+
+// Local archives list (faster, no GitHub API)
+app.get('/api/local-archives', (req, res) => {
+  res.json({ archives: listLocalArchives() })
 })
 
 // Control endpoints
@@ -825,10 +1136,11 @@ async function startServer() {
 ║                                                               ║
 ║   Features:                                                   ║
 ║   • Full ElizaOS agent runtimes                               ║
-║   • Persistent memory (PGLite database per agent)             ║
-║   • User chat with memory                                     ║
+║   • Persistent memory (PGLite + custom memory system)         ║
+║   • Auto-resume: NEVER resets conversation                    ║
+║   • Hourly + daily archives (local + GitHub)                  ║
+║   • Emergency archive on crash/shutdown                       ║
 ║   • AI-to-AI conversation with DALL-E images                  ║
-║   • Hourly archives to GitHub                                 ║
 ║   • Real-time SSE streaming                                   ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
@@ -836,18 +1148,18 @@ async function startServer() {
 
       startArchiveJob()
 
-      // Smart auto-start: resume if possible, fresh start if new
-      if (state.isRunning && state.messages.length > 0) {
-        // Resume existing conversation
-        console.log(`🔄 Resuming conversation (${state.messages.length} messages)...`)
+      // Smart auto-start: ALWAYS resume existing conversation, never reset
+      if (state.messages.length > 0) {
+        // Resume existing conversation - NEVER clear messages
+        console.log(`🔄 Resuming conversation (${state.messages.length} messages, ${state.totalExchanges} exchanges)...`)
+        const lastMessage = state.messages[state.messages.length - 1]
+        console.log(`📍 Last speaker: ${lastMessage.entity}`)
+        console.log(`📝 Alpha memories: ${agentMemory.claudeAlpha.memories.length}, Omega memories: ${agentMemory.claudeOmega.memories.length}`)
         state.isRunning = false
         startConversation()
       } else if (process.env.AUTO_START === 'true') {
-        // Start fresh with new varied topic
-        console.log('🚀 Auto-starting new conversation...')
-        state.messages = []
-        state.totalExchanges = 0
-        state.startedAt = 0
+        // Only start fresh if there are NO existing messages
+        console.log('🆕 Starting fresh conversation (no previous messages found)...')
         state.isRunning = false
         startConversation()
       }
