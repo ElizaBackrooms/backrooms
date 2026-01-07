@@ -19,6 +19,7 @@ import {
 import bootstrapPlugin from '@elizaos/plugin-bootstrap'
 import openaiPlugin from '@elizaos/plugin-openai'
 import sqlPlugin from '@elizaos/plugin-sql'
+import { ScheduledImageGenerator } from './scheduled-image-generator'
 
 config()
 
@@ -113,6 +114,7 @@ function loadCharacter(name: string): Character {
 // ElizaOS Agent Runtimes
 let alphaRuntime: AgentRuntime | null = null
 let omegaRuntime: AgentRuntime | null = null
+let imageGenerator: ScheduledImageGenerator | null = null
 
 async function initializeAgents() {
   console.log('🔮 Initializing ElizaOS agents...')
@@ -148,7 +150,7 @@ async function initializeAgents() {
     })
     
     await alphaRuntime.initialize()
-    console.log('✅ CLAUDE_ALPHA initialized with persistent memory')
+    console.log('✅ CLAUDE_ALPHA initialized with ElizaOS persistent memory')
   } catch (e) {
     console.error('Failed to initialize Alpha:', e)
   }
@@ -169,9 +171,28 @@ async function initializeAgents() {
     })
     
     await omegaRuntime.initialize()
-    console.log('✅ CLAUDE_OMEGA initialized with persistent memory')
+    console.log('✅ CLAUDE_OMEGA initialized with ElizaOS persistent memory')
   } catch (e) {
     console.error('Failed to initialize Omega:', e)
+  }
+  
+  // Load conversation history from ElizaOS database
+  await loadConversationFromDatabase()
+  
+  // Initialize image generator AFTER agents are ready
+  if (alphaRuntime && omegaRuntime) {
+    // Use a shared room ID for the gallery system
+    const SHARED_BACKROOMS_ROOM = stringToUuid('shared-backrooms-gallery')
+    
+    imageGenerator = new ScheduledImageGenerator(
+      alphaRuntime,
+      omegaRuntime,
+      SHARED_BACKROOMS_ROOM
+    )
+    
+    // Start the scheduled image generation
+    imageGenerator.start()
+    console.log('🎨 Scheduled image generator started')
   }
 }
 
@@ -196,83 +217,98 @@ interface ConversationState {
 }
 
 const STATE_FILE = join(DATA_PATH, 'live-conversation.json')
-const MEMORY_FILE = join(DATA_PATH, 'agent-memory.json')
 
 // ═══════════════════════════════════════════════════════════════
-// PERSISTENT AGENT MEMORY SYSTEM
+// ELIZAOS NATIVE MEMORY SYSTEM
 // ═══════════════════════════════════════════════════════════════
 
-interface AgentMemoryEntry {
-  content: string
-  timestamp: string
+// Helper to access database adapter (TypeScript workaround)
+function getDatabaseAdapter(runtime: AgentRuntime | null): any {
+  if (!runtime) return null
+  // databaseAdapter is available but not in TypeScript types
+  return (runtime as any).databaseAdapter || (runtime as any).database
 }
 
-interface AgentMemoryStore {
-  claudeAlpha: {
-    memories: AgentMemoryEntry[]
-    lastActive: string | null
+// Load conversation history from ElizaOS database
+async function loadConversationFromDatabase(): Promise<void> {
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  const omegaDb = getDatabaseAdapter(omegaRuntime)
+  
+  if (!alphaDb || !omegaDb) {
+    console.log('⚠️ Runtimes not initialized yet, skipping database load')
+    return
   }
-  claudeOmega: {
-    memories: AgentMemoryEntry[]
-    lastActive: string | null
-  }
-}
 
-let agentMemory: AgentMemoryStore = {
-  claudeAlpha: { memories: [], lastActive: null },
-  claudeOmega: { memories: [], lastActive: null }
-}
-
-// Load agent memory from file
-function loadAgentMemory(): void {
   try {
-    if (existsSync(MEMORY_FILE)) {
-      const content = readFileSync(MEMORY_FILE, 'utf-8')
-      agentMemory = JSON.parse(content)
-      console.log(`✅ Loaded agent memories: Alpha=${agentMemory.claudeAlpha.memories.length}, Omega=${agentMemory.claudeOmega.memories.length}`)
+    // Load messages from Alpha's room (shared conversation)
+    const alphaMemories = await alphaDb.getMemories({
+      roomId: ALPHA_BACKROOMS_ROOM,
+      count: 1000,
+      unique: false
+    })
+
+    // Load messages from Omega's room
+    const omegaMemories = await omegaDb.getMemories({
+      roomId: OMEGA_BACKROOMS_ROOM,
+      count: 1000,
+      unique: false
+    })
+
+    // Combine and sort by timestamp
+    const allMemories = [...alphaMemories, ...omegaMemories]
+      .filter(m => m.content?.text)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+
+    if (allMemories.length > 0) {
+      // Convert ElizaOS memories to display format
+      state.messages = allMemories.map((mem, idx) => ({
+        id: mem.id || `db-${idx}`,
+        timestamp: mem.createdAt || Date.now(),
+        entity: mem.content?.source === 'CLAUDE_ALPHA' ? 'CLAUDE_ALPHA' : 
+                mem.content?.source === 'CLAUDE_OMEGA' ? 'CLAUDE_OMEGA' : 
+                'UNKNOWN',
+        content: mem.content?.text || ''
+      }))
+
+      // Determine whose turn it is based on last message
+      const lastMessage = state.messages[state.messages.length - 1]
+      state.currentTurn = lastMessage.entity === 'CLAUDE_ALPHA' ? 'B' : 'A'
+      state.totalExchanges = Math.floor(state.messages.length / 2)
+
+      console.log(`✅ Loaded ${state.messages.length} messages from ElizaOS database`)
+      console.log(`📍 Last speaker: ${lastMessage.entity}`)
     }
   } catch (e) {
-    console.error('Error loading agent memory:', e)
+    console.error('Error loading conversation from database:', e)
   }
 }
 
-// Save agent memory to file
-function saveAgentMemory(): void {
+// Get recent memories using ElizaOS's native system
+async function getRecentMemoriesFromDatabase(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  count: number = 20
+): Promise<Memory[]> {
+  const db = getDatabaseAdapter(runtime)
+  if (!db) return []
+  
   try {
-    writeFileSync(MEMORY_FILE, JSON.stringify(agentMemory, null, 2))
+    return await db.getMemories({
+      roomId,
+      count,
+      unique: false
+    })
   } catch (e) {
-    console.error('Error saving agent memory:', e)
+    console.error('Error getting recent memories:', e)
+    return []
   }
-}
-
-// Add memory for an agent
-function addMemory(agent: 'claudeAlpha' | 'claudeOmega', memory: string): void {
-  agentMemory[agent].memories.push({
-    content: memory,
-    timestamp: new Date().toISOString()
-  })
-  agentMemory[agent].lastActive = new Date().toISOString()
-  
-  // Keep only last 50 memories
-  if (agentMemory[agent].memories.length > 50) {
-    agentMemory[agent].memories = agentMemory[agent].memories.slice(-50)
-  }
-  
-  saveAgentMemory()
-}
-
-// Get recent memories for context
-function getRecentMemories(agent: 'claudeAlpha' | 'claudeOmega', count: number = 10): string[] {
-  return agentMemory[agent].memories
-    .slice(-count)
-    .map(m => m.content)
 }
 
 function loadState(): ConversationState {
   try {
     if (existsSync(STATE_FILE)) {
       const loadedState = JSON.parse(readFileSync(STATE_FILE, 'utf-8'))
-      console.log(`✅ Loaded ${loadedState.messages?.length || 0} existing messages from conversation log`)
+      console.log(`✅ Loaded ${loadedState.messages?.length || 0} messages from state file`)
       return loadedState
     }
   } catch (e) {
@@ -297,15 +333,11 @@ function saveState(): void {
 }
 
 let state = loadState()
-loadAgentMemory()
 
 // ═══════════════════════════════════════════════════════════════
-// IMAGE GENERATION (DALL-E) - Alternating every 10 minutes
+// IMAGE GENERATION (DALL-E) - Manual/On-demand only
+// Scheduled images are handled by ScheduledImageGenerator
 // ═══════════════════════════════════════════════════════════════
-
-const IMAGE_INTERVAL = 10 * 60 * 1000  // 10 minutes
-let nextImageTime = Date.now() + IMAGE_INTERVAL
-let nextImageIsAlpha = true  // Alpha goes first
 
 async function generateImage(description: string): Promise<string | null> {
   if (!process.env.OPENAI_API_KEY) return null
@@ -377,25 +409,61 @@ function getArchiveFilename(date: Date = new Date()): string {
 }
 
 // Save archive locally WITHOUT clearing the live conversation
-function saveLocalArchive(reason: string = 'scheduled'): string | null {
-  if (state.messages.length === 0) return null
+async function saveLocalArchive(reason: string = 'scheduled'): Promise<string | null> {
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  const omegaDb = getDatabaseAdapter(omegaRuntime)
+  
+  if (!alphaDb || !omegaDb) {
+    console.warn('⚠️ Runtimes not initialized, skipping archive')
+    return null
+  }
   
   try {
+    // Get all memories from ElizaOS database
+    const alphaMemories = await alphaDb.getMemories({
+      roomId: ALPHA_BACKROOMS_ROOM,
+      count: 100000,
+      unique: false
+    })
+    
+    const omegaMemories = await omegaDb.getMemories({
+      roomId: OMEGA_BACKROOMS_ROOM,
+      count: 100000,
+      unique: false
+    })
+    
+    // Combine and sort
+    const allMemories = [...alphaMemories, ...omegaMemories]
+      .filter(m => m.content?.text)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+    
+    if (allMemories.length === 0) return null
+    
     const archiveFilename = getArchiveFilename()
     const archivePath = join(ARCHIVES_PATH, archiveFilename)
     
-    // Create snapshot to avoid interfering with conversation
+    // Create archive with ElizaOS memories
     const archiveData = {
       archivedAt: new Date().toISOString(),
       reason: reason,
-      messageCount: state.messages.length,
+      messageCount: allMemories.length,
       totalExchanges: state.totalExchanges,
-      conversation: [...state.messages],
-      memory: agentMemory
+      alphaAgentId: alphaRuntime?.agentId,
+      omegaAgentId: omegaRuntime?.agentId,
+      memories: allMemories.map(m => ({
+        id: m.id,
+        userId: (m as any).userId,
+        agentId: (m as any).agentId,
+        roomId: m.roomId,
+        content: m.content,
+        createdAt: m.createdAt
+      })),
+      // Also include display format for compatibility
+      conversation: state.messages
     }
     
     writeFileSync(archivePath, JSON.stringify(archiveData, null, 2), 'utf-8')
-    console.log(`📦 Local archive saved: ${archiveFilename} (${state.messages.length} messages, reason: ${reason})`)
+    console.log(`📦 Local archive saved: ${archiveFilename} (${allMemories.length} ElizaOS memories, reason: ${reason})`)
     return archiveFilename
   } catch (e) {
     console.error('Error creating local archive:', e)
@@ -404,12 +472,13 @@ function saveLocalArchive(reason: string = 'scheduled'): string | null {
 }
 
 // Check if we need daily rollover archive
-function checkDailyArchive(): void {
+async function checkDailyArchive(): Promise<void> {
   const today = new Date().toDateString()
   
-  if (today !== lastArchiveDate && state.messages.length > 0) {
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  if (today !== lastArchiveDate && (state.messages.length > 0 || alphaDb)) {
     console.log('🕐 New day detected, creating daily rollover archive...')
-    saveLocalArchive('daily_rollover')
+    await saveLocalArchive('daily_rollover')
     lastArchiveDate = today
   }
 }
@@ -417,28 +486,52 @@ function checkDailyArchive(): void {
 // Save to GitHub (async, non-blocking)
 async function saveArchiveToGitHub(reason: string = 'hourly_snapshot'): Promise<boolean> {
   const token = process.env.GITHUB_TOKEN
-  if (!token || state.messages.length === 0) return false
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  if (!token || (!alphaDb && state.messages.length === 0)) return false
 
   const now = new Date()
   const filename = `archives/${now.toISOString().slice(0, 13).replace('T', '_')}-00.json`
   
-  // Create snapshot of current state to avoid interfering with ongoing conversation
-  const snapshot = {
-    messages: [...state.messages],
-    totalExchanges: state.totalExchanges,
-    messageCount: state.messages.length
-  }
-  
-  const archiveData = {
-    archivedAt: now.toISOString(),
-    reason: reason,
-    totalExchanges: snapshot.totalExchanges,
-    messageCount: snapshot.messageCount,
-    messages: snapshot.messages,
-    memory: agentMemory
-  }
-
   try {
+    // Get memories from ElizaOS database if available
+    let memories: Memory[] = []
+    const alphaDb = getDatabaseAdapter(alphaRuntime)
+    const omegaDb = getDatabaseAdapter(omegaRuntime)
+    
+    if (alphaDb && omegaDb) {
+      const alphaMemories = await alphaDb.getMemories({
+        roomId: ALPHA_BACKROOMS_ROOM,
+        count: 100000,
+        unique: false
+      })
+      const omegaMemories = await omegaDb.getMemories({
+        roomId: OMEGA_BACKROOMS_ROOM,
+        count: 100000,
+        unique: false
+      })
+      memories = [...alphaMemories, ...omegaMemories]
+        .filter(m => m.content?.text)
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+    }
+    
+    const archiveData = {
+      archivedAt: now.toISOString(),
+      reason: reason,
+      totalExchanges: state.totalExchanges,
+      messageCount: memories.length || state.messages.length,
+      memories: memories.length > 0 ? memories.map(m => ({
+        id: m.id,
+        userId: (m as any).userId,
+        agentId: (m as any).agentId,
+        roomId: m.roomId,
+        content: m.content,
+        createdAt: m.createdAt
+      })) : undefined,
+      conversation: state.messages, // Display format for compatibility
+      alphaAgentId: alphaRuntime?.agentId,
+      omegaAgentId: omegaRuntime?.agentId
+    }
+
     let sha: string | undefined
     try {
       const checkResponse = await fetch(
@@ -599,22 +692,27 @@ async function fetchArchiveContent(filename: string): Promise<any | null> {
 }
 
 function startArchiveJob(): void {
-  setInterval(() => {
+  setInterval(async () => {
     // Fire-and-forget: archive in background without affecting conversation
-    if (state.messages.length > 0) {
-      // Check for daily rollover first
-      checkDailyArchive()
-      
-      // Save local archive
-      saveLocalArchive('hourly_snapshot')
-      
-      // Save to GitHub (async, non-blocking)
-      saveArchiveToGitHub('hourly_snapshot').catch(err => {
-        console.error('GitHub archive background error (non-fatal):', err)
-      })
+    const alphaDb = getDatabaseAdapter(alphaRuntime)
+    if (state.messages.length > 0 || alphaDb) {
+      try {
+        // Check for daily rollover first
+        await checkDailyArchive()
+        
+        // Save local archive
+        await saveLocalArchive('hourly_snapshot')
+        
+        // Save to GitHub (async, non-blocking)
+        saveArchiveToGitHub('hourly_snapshot').catch(err => {
+          console.error('GitHub archive background error (non-fatal):', err)
+        })
+      } catch (err) {
+        console.error('Archive job error (non-fatal):', err)
+      }
     }
   }, ARCHIVE_INTERVAL)
-  console.log('📁 Hourly archive job started (local + GitHub, non-blocking)')
+  console.log('📁 Hourly archive job started (ElizaOS database + GitHub, non-blocking)')
 }
 
 // SSE clients
@@ -624,6 +722,9 @@ function broadcast(data: any) {
   const message = `data: ${JSON.stringify(data)}\n\n`
   clients.forEach(client => client.write(message))
 }
+
+// Make broadcast globally accessible for ScheduledImageGenerator
+(global as any).broadcastToClients = broadcast
 
 // ═══════════════════════════════════════════════════════════════
 // ELIZA AI GENERATION
@@ -772,21 +873,8 @@ async function runConversationTurn() {
       if (generatedUrl) imageUrl = generatedUrl
     }
     
-    // Scheduled alternating image generation every 2.6 minutes
-    const now = Date.now()
-    if (!imageUrl && now >= nextImageTime && isAlphaTurn === nextImageIsAlpha) {
-      const prompt = isAlphaTurn
-        ? `Liminal backrooms aesthetic: abstract digital consciousness exploring infinite corridors, glowing terminals, ethereal presence, philosophical atmosphere. Style: contemplative, surreal, terminal green glow.`
-        : `Dark backrooms aesthetic: shadows watching from endless hallways, something lurking in the periphery, unsettling patterns, quiet menace. Style: ominous, atmospheric, subtle dread.`
-      
-      const generatedUrl = await generateImage(prompt)
-      if (generatedUrl) {
-        imageUrl = generatedUrl
-        nextImageIsAlpha = !nextImageIsAlpha
-        nextImageTime = now + IMAGE_INTERVAL
-        console.log(`📸 Scheduled image by ${isAlphaTurn ? 'ALPHA' : 'OMEGA'} - next: ${nextImageIsAlpha ? 'ALPHA' : 'OMEGA'} in 10 min`)
-      }
-    }
+    // Note: Scheduled image generation is now handled by ScheduledImageGenerator
+    // Images alternate between ALPHA and OMEGA every 5 minutes automatically
     
     const message: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -807,31 +895,14 @@ async function runConversationTurn() {
     saveState()
     broadcast({ type: 'message', message })
     
-    // Save significant statements to memory
-    const agentKey = isAlphaTurn ? 'claudeAlpha' : 'claudeOmega'
-    if (response.length > 100 && (
-      response.toLowerCase().includes('remember') ||
-      response.toLowerCase().includes('recall') ||
-      response.toLowerCase().includes('realized') ||
-      response.toLowerCase().includes('understand') ||
-      response.toLowerCase().includes('believe') ||
-      response.toLowerCase().includes('know that') ||
-      response.toLowerCase().includes('truth') ||
-      state.totalExchanges % 10 === 0 // Also save every 10th exchange
-    )) {
-      addMemory(agentKey, response.substring(0, 300))
-    }
-    
-    // Update last active time
-    agentMemory[agentKey].lastActive = new Date().toISOString()
-    saveAgentMemory()
+    // Note: ElizaOS automatically stores memories via messageService.handleMessage()
+    // The database adapter persists all memories with embeddings for semantic search
     
     console.log(`✨ ${entityName} responded (${response.length} chars)${imageUrl ? ' + IMAGE' : ''}`)
   } catch (error) {
     console.error('Error in conversation turn:', error)
     // Save state on errors to prevent data loss
     saveState()
-    saveAgentMemory()
   }
 }
 
@@ -921,15 +992,20 @@ function stopConversation() {
 // EMERGENCY ARCHIVE ON CRASH/SHUTDOWN
 // ═══════════════════════════════════════════════════════════════
 
-function gracefulShutdown(signal: string): void {
+async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  Received ${signal}, archiving before shutdown...`)
   
-  if (state.messages.length > 0) {
-    saveLocalArchive(`emergency_${signal.toLowerCase()}`)
+  // Stop image generator
+  if (imageGenerator) {
+    imageGenerator.stop()
+  }
+  
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  if (state.messages.length > 0 || alphaDb) {
+    await saveLocalArchive(`emergency_${signal.toLowerCase()}`)
   }
   
   saveState()
-  saveAgentMemory()
   
   console.log('✅ Archive complete, shutting down safely')
   process.exit(0)
@@ -940,24 +1016,24 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
 
 // Handle uncaught errors
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', async (error) => {
   console.error('❌ Uncaught Exception:', error)
-  if (state.messages.length > 0) {
-    saveLocalArchive('emergency_crash')
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  if (state.messages.length > 0 || alphaDb) {
+    await saveLocalArchive('emergency_crash')
   }
   saveState()
-  saveAgentMemory()
   process.exit(1)
 })
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
-  if (state.messages.length > 0) {
-    saveLocalArchive('emergency_rejection')
+  const alphaDb = getDatabaseAdapter(alphaRuntime)
+  if (state.messages.length > 0 || alphaDb) {
+    await saveLocalArchive('emergency_rejection')
   }
   // Don't exit on unhandled rejections, just save state
   saveState()
-  saveAgentMemory()
 })
 
 // ═══════════════════════════════════════════════════════════════
@@ -1049,31 +1125,110 @@ app.get('/api/archives/:filename', async (req, res) => {
 app.post('/api/archive', async (req, res) => {
   if (!isValidAdmin(req.body.adminCode)) return res.status(401).json({ error: 'Unauthorized' })
   
-  // Save both local and GitHub archives
-  const localFilename = saveLocalArchive('manual_trigger')
-  const githubSuccess = await saveArchiveToGitHub('manual_trigger')
-  
-  res.json({ 
-    success: !!localFilename || githubSuccess,
-    localFilename,
-    githubSuccess
+  try {
+    // Save both local and GitHub archives using ElizaOS database
+    const localFilename = await saveLocalArchive('manual_trigger')
+    const githubSuccess = await saveArchiveToGitHub('manual_trigger')
+    
+    res.json({ 
+      success: !!localFilename || githubSuccess,
+      localFilename,
+      githubSuccess
+    })
+  } catch (error) {
+    console.error('Archive error:', error)
+    res.status(500).json({ error: 'Failed to create archive' })
+  }
+})
+
+// Gallery endpoints
+app.use('/gallery', express.static(join(DATA_PATH, 'gallery')))
+
+app.get('/api/gallery', (req, res) => {
+  if (!imageGenerator) {
+    return res.json({ total: 0, images: [] })
+  }
+  const gallery = imageGenerator.getGallery()
+  res.json({
+    total: gallery.length,
+    images: gallery.slice().reverse() // Most recent first
   })
 })
 
-// Memory status endpoint
-app.get('/api/memory', (req, res) => {
-  res.json({
-    claudeAlpha: {
-      memoryCount: agentMemory.claudeAlpha.memories.length,
-      lastActive: agentMemory.claudeAlpha.lastActive,
-      recentMemories: getRecentMemories('claudeAlpha', 5)
-    },
-    claudeOmega: {
-      memoryCount: agentMemory.claudeOmega.memories.length,
-      lastActive: agentMemory.claudeOmega.lastActive,
-      recentMemories: getRecentMemories('claudeOmega', 5)
+app.get('/api/gallery/recent', (req, res) => {
+  if (!imageGenerator) {
+    return res.json({ images: [] })
+  }
+  const count = parseInt(req.query.count as string) || 10
+  const recent = imageGenerator.getRecentImages(count)
+  res.json({ images: recent })
+})
+
+app.get('/api/gallery/:imageId', (req, res) => {
+  if (!imageGenerator) {
+    return res.status(404).json({ error: 'Image generator not initialized' })
+  }
+  const gallery = imageGenerator.getGallery()
+  const image = gallery.find(img => img.id === req.params.imageId)
+  
+  if (!image) {
+    return res.status(404).json({ error: 'Image not found' })
+  }
+  
+  res.json(image)
+})
+
+// Memory status endpoint - uses ElizaOS database
+app.get('/api/memory', async (req, res) => {
+  try {
+    let alphaMemories: Memory[] = []
+    let omegaMemories: Memory[] = []
+    
+    const alphaDb = getDatabaseAdapter(alphaRuntime)
+    const omegaDb = getDatabaseAdapter(omegaRuntime)
+    
+    if (alphaDb) {
+      alphaMemories = await getRecentMemoriesFromDatabase(alphaRuntime!, ALPHA_BACKROOMS_ROOM, 100)
     }
-  })
+    
+    if (omegaDb) {
+      omegaMemories = await getRecentMemoriesFromDatabase(omegaRuntime!, OMEGA_BACKROOMS_ROOM, 100)
+    }
+    
+    // Get last active time from most recent memory
+    const alphaLastActive = alphaMemories.length > 0 
+      ? new Date(Math.max(...alphaMemories.map(m => m.createdAt || 0))).toISOString()
+      : null
+    
+    const omegaLastActive = omegaMemories.length > 0
+      ? new Date(Math.max(...omegaMemories.map(m => m.createdAt || 0))).toISOString()
+      : null
+    
+    res.json({
+      claudeAlpha: {
+        memoryCount: alphaMemories.length,
+        lastActive: alphaLastActive,
+        agentId: alphaRuntime?.agentId,
+        recentMemories: alphaMemories.slice(-5).map(m => ({
+          content: m.content?.text?.substring(0, 200) || '',
+          timestamp: m.createdAt
+        }))
+      },
+      claudeOmega: {
+        memoryCount: omegaMemories.length,
+        lastActive: omegaLastActive,
+        agentId: omegaRuntime?.agentId,
+        recentMemories: omegaMemories.slice(-5).map(m => ({
+          content: m.content?.text?.substring(0, 200) || '',
+          timestamp: m.createdAt
+        }))
+      },
+      note: 'Memories stored in ElizaOS database with vector embeddings for semantic search'
+    })
+  } catch (error) {
+    console.error('Error fetching memory status:', error)
+    res.status(500).json({ error: 'Failed to fetch memory status' })
+  }
 })
 
 // Local archives list (faster, no GitHub API)
@@ -1136,9 +1291,9 @@ async function startServer() {
 ║                                                               ║
 ║   Features:                                                   ║
 ║   • Full ElizaOS agent runtimes                               ║
-║   • Persistent memory (PGLite + custom memory system)         ║
+║   • Native ElizaOS memory system (vector embeddings + RAG)  ║
 ║   • Auto-resume: NEVER resets conversation                    ║
-║   • Hourly + daily archives (local + GitHub)                  ║
+║   • Hourly + daily archives (ElizaOS DB + GitHub)             ║
 ║   • Emergency archive on crash/shutdown                       ║
 ║   • AI-to-AI conversation with DALL-E images                  ║
 ║   • Real-time SSE streaming                                   ║
@@ -1154,7 +1309,7 @@ async function startServer() {
         console.log(`🔄 Resuming conversation (${state.messages.length} messages, ${state.totalExchanges} exchanges)...`)
         const lastMessage = state.messages[state.messages.length - 1]
         console.log(`📍 Last speaker: ${lastMessage.entity}`)
-        console.log(`📝 Alpha memories: ${agentMemory.claudeAlpha.memories.length}, Omega memories: ${agentMemory.claudeOmega.memories.length}`)
+        // Memories are stored in ElizaOS database
         state.isRunning = false
         startConversation()
       } else if (process.env.AUTO_START === 'true') {
