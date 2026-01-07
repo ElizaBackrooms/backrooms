@@ -19,7 +19,7 @@ import {
 import bootstrapPlugin from '@elizaos/plugin-bootstrap'
 import openaiPlugin from '@elizaos/plugin-openai'
 import sqlPlugin from '@elizaos/plugin-sql'
-import { ScheduledImageGenerator } from './scheduled-image-generator'
+import { ScheduledImageGenerator } from './scheduled-image-generator.js'
 
 config()
 
