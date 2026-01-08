@@ -586,11 +586,26 @@ function listLocalArchives(): ArchiveInfo[] {
       const filepath = join(ARCHIVES_PATH, filename)
       const stats = statSync(filepath)
       const match = filename.match(/(\d{4}-\d{2}-\d{2})_(\d{2})00\.json/)
+      
+      // Try to read archive metadata for accurate counts
+      let messageCount = 0
+      let exchanges = 0
+      try {
+        const archiveContent = JSON.parse(readFileSync(filepath, 'utf-8'))
+        messageCount = archiveContent.messageCount || 
+                      archiveContent.messages?.length || 
+                      archiveContent.conversation?.length || 
+                      archiveContent.memories?.length || 0
+        exchanges = archiveContent.totalExchanges || Math.floor(messageCount / 2)
+      } catch (e) {
+        // If we can't read it, just use defaults
+      }
+      
       return {
         filename,
         timestamp: match ? new Date(`${match[1]}T${match[2]}:00:00Z`).getTime() : 0,
-        messageCount: 0,
-        exchanges: 0,
+        messageCount,
+        exchanges,
         size: stats.size,
         created: stats.birthtime
       }
@@ -670,23 +685,44 @@ async function fetchArchivesList(): Promise<ArchiveInfo[]> {
 async function fetchArchiveContent(filename: string): Promise<any | null> {
   // Try local first
   const localContent = getLocalArchiveContent(filename)
-  if (localContent) return localContent
+  if (localContent) {
+    console.log(`📂 Loaded archive from local: ${filename}`)
+    return localContent
+  }
   
   // Fall back to GitHub
   const token = process.env.GITHUB_TOKEN
-  if (!token) return null
+  if (!token) {
+    console.log(`⚠️ No GitHub token, cannot fetch archive: ${filename}`)
+    return null
+  }
 
   try {
-    const response = await fetch(
+    // Try with exact filename first
+    let response = await fetch(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives/${filename}`,
       { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
     )
+    
+    // If not found, try with different format (local uses HH00, GitHub might use HH-00)
+    if (!response.ok && filename.match(/_\d{4}\.json$/)) {
+      const altFilename = filename.replace(/(\d{2})00\.json$/, '$1-00.json')
+      response = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/archives/${altFilename}`,
+        { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' } }
+      )
+    }
+    
     if (response.ok) {
       const data = await response.json()
-      return JSON.parse(Buffer.from(data.content, 'base64').toString('utf-8'))
+      const content = JSON.parse(Buffer.from(data.content, 'base64').toString('utf-8'))
+      console.log(`📂 Loaded archive from GitHub: ${filename}`)
+      return content
+    } else {
+      console.log(`⚠️ Archive not found: ${filename} (${response.status})`)
     }
   } catch (e) {
-    console.error('Error fetching archive:', e)
+    console.error(`❌ Error fetching archive ${filename}:`, e)
   }
   return null
 }
@@ -907,7 +943,12 @@ async function runConversationTurn() {
 }
 
 function startConversation() {
-  if (state.isRunning) return
+  // Allow resuming even if state.isRunning is true (e.g., after server restart)
+  // Check if conversation loop is actually running by checking the interval
+  if (state.isRunning && conversationInterval !== null) {
+    console.log('⚠️  Conversation already running')
+    return
+  }
   
   state.isRunning = true
   
@@ -1119,7 +1160,29 @@ app.get('/api/archives', async (req, res) => {
 
 app.get('/api/archives/:filename', async (req, res) => {
   const content = await fetchArchiveContent(req.params.filename)
-  content ? res.json(content) : res.status(404).json({ error: 'Not found' })
+  if (!content) {
+    return res.status(404).json({ error: 'Not found' })
+  }
+  
+  // Normalize archive format - ensure messages array exists
+  // Archives may have 'conversation' or 'messages', and we need to handle both
+  if (!content.messages && content.conversation) {
+    content.messages = content.conversation
+  } else if (!content.messages && content.memories) {
+    // Convert memories to message format if needed
+    content.messages = content.memories.map((mem: any, idx: number) => ({
+      id: mem.id || `archive-${idx}`,
+      timestamp: mem.createdAt || Date.now(),
+      entity: mem.content?.source === 'CLAUDE_ALPHA' ? 'CLAUDE_ALPHA' : 
+              mem.content?.source === 'CLAUDE_OMEGA' ? 'CLAUDE_OMEGA' : 
+              mem.content?.source || 'UNKNOWN',
+      content: mem.content?.text || ''
+    }))
+  } else if (!content.messages) {
+    content.messages = []
+  }
+  
+  res.json(content)
 })
 
 app.post('/api/archive', async (req, res) => {
@@ -1311,20 +1374,29 @@ async function startServer() {
 
       startArchiveJob()
 
-      // Smart auto-start: ALWAYS resume existing conversation, never reset
-      if (state.messages.length > 0) {
-        // Resume existing conversation - NEVER clear messages
-        console.log(`🔄 Resuming conversation (${state.messages.length} messages, ${state.totalExchanges} exchanges)...`)
-        const lastMessage = state.messages[state.messages.length - 1]
-        console.log(`📍 Last speaker: ${lastMessage.entity}`)
+      // Smart auto-resume: If conversation was running before server restart, resume it
+      // This allows the conversation to continue even after closing the website
+      if (state.isRunning) {
+        // Conversation was running before - auto-resume it
+        console.log(`🔄 Auto-resuming conversation (was running before restart)`)
+        console.log(`💡 Conversation will continue running until admin stops it`)
+        console.log(`📊 State: ${state.messages.length} messages, ${state.totalExchanges} exchanges`)
+        if (state.messages.length > 0) {
+          const lastMessage = state.messages[state.messages.length - 1]
+          console.log(`📍 Last speaker: ${lastMessage.entity}`)
+        }
         // Memories are stored in ElizaOS database
-        state.isRunning = false
         startConversation()
+      } else if (state.messages.length > 0) {
+        // Conversation exists but was stopped - don't auto-start
+        console.log(`⏸️  Conversation found but was stopped (${state.messages.length} messages)`)
+        console.log(`💡 Use admin code to start the conversation`)
       } else if (process.env.AUTO_START === 'true') {
-        // Only start fresh if there are NO existing messages
-        console.log('🆕 Starting fresh conversation (no previous messages found)...')
-        state.isRunning = false
+        // Only start fresh if there are NO existing messages and AUTO_START is enabled
+        console.log('🆕 Starting fresh conversation (no previous messages found, AUTO_START enabled)...')
         startConversation()
+      } else {
+        console.log('💤 Server ready. Use admin code to start the conversation.')
       }
     })
   } catch (error) {
