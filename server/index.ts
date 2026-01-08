@@ -870,6 +870,8 @@ function getRandomFirstPrompt(): string {
 }
 
 let conversationInterval: NodeJS.Timeout | null = null
+let lastManualImageGeneration: number = 0
+const MANUAL_IMAGE_INTERVAL = 30 * 60 * 1000 // 30 minutes
 
 async function runConversationTurn() {
   if (!state.isRunning) return
@@ -900,17 +902,32 @@ async function runConversationTurn() {
       isAlphaTurn
     )
     
-    // Check for manual [IMAGE:] tag in response
+    // Check for manual [IMAGE:] tag in response - rate limited to every 30 minutes
     const imageMatch = response.match(/\[IMAGE:\s*([^\]]+)\]/i)
     let imageUrl: string | undefined
     
     if (imageMatch) {
-      const generatedUrl = await generateImage(`Liminal backrooms aesthetic, eerie digital art: ${imageMatch[1].trim()}. Style: dark, atmospheric, surreal.`)
-      if (generatedUrl) imageUrl = generatedUrl
+      const now = Date.now()
+      const timeSinceLastImage = now - lastManualImageGeneration
+      
+      if (timeSinceLastImage >= MANUAL_IMAGE_INTERVAL) {
+        // 30 minutes have passed, generate the image
+        console.log(`🎨 Manual image requested by ${entityName}, generating...`)
+        const generatedUrl = await generateImage(`Liminal backrooms aesthetic, eerie digital art: ${imageMatch[1].trim()}. Style: dark, atmospheric, surreal.`)
+        if (generatedUrl) {
+          imageUrl = generatedUrl
+          lastManualImageGeneration = now
+          console.log(`✅ Manual image generated (next available in 30 minutes)`)
+        }
+      } else {
+        // Rate limited - too soon since last image
+        const minutesRemaining = Math.ceil((MANUAL_IMAGE_INTERVAL - timeSinceLastImage) / (60 * 1000))
+        console.log(`⏸️  Manual image requested but rate limited (${minutesRemaining} minutes remaining)`)
+      }
     }
     
-    // Note: Scheduled image generation is now handled by ScheduledImageGenerator
-    // Images alternate between ALPHA and OMEGA every 5 minutes automatically
+    // Note: Scheduled image generation is handled by ScheduledImageGenerator
+    // Scheduled images are generated automatically every 30 minutes (alternating between ALPHA and OMEGA)
     
     const message: Message = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
