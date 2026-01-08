@@ -231,7 +231,7 @@ class ScheduledImageGenerator {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-4o-mini', // Use cheaper model to reduce costs
           messages: [
             {
               role: 'system',

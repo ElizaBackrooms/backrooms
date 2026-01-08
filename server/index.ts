@@ -163,6 +163,8 @@ async function initializeAgents() {
       settings: {
         OPENAI_API_KEY: openaiKey,
         PGLITE_PATH: join(DATA_PATH, 'omega-db'),
+        // Use cheaper model to reduce costs (GPT-4o Mini is ~10x cheaper than GPT-4)
+        LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
         // Image generation settings
         IMAGE_GEN_PROVIDER: 'openai',
         IMAGE_MODEL: 'dall-e-3',
@@ -1026,7 +1028,9 @@ function startConversation() {
       console.error('Unexpected error:', err)
     }
     if (state.isRunning) {
-      const delay = 25000 + Math.random() * 10000
+      // Reduced frequency to save API costs: 3-5 minutes between messages
+      // This reduces cost from ~$2/30min to ~$0.20-0.40/30min
+      const delay = 3 * 60 * 1000 + Math.random() * 2 * 60 * 1000 // 3-5 minutes
       conversationInterval = setTimeout(runWithRandomDelay, delay)
     }
   }
